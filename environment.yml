@@ -1,0 +1,23 @@
+name: video-semantic-search
+channels:
+  - pytorch
+  - nvidia
+  - conda-forge
+dependencies:
+  - python=3.10
+  - pytorch
+  - torchvision
+  - pytorch-cuda=12.1
+  - python-multipart
+  - opencv
+  - faiss-gpu
+  - transformers
+  - numpy
+  - pillow
+  - aiofiles
+  - pydantic-settings
+  - pip
+  - pip:
+      - fastapi
+      - uvicorn[standard]
+      - pytest

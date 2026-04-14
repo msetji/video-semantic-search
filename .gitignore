@@ -1,0 +1,42 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+.venv/
+venv/
+env/
+*.egg-info/
+.eggs/
+dist/
+build/
+*.so
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Node / frontend
+node_modules/
+frontend/dist/
+*.local
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+.cursor/
+
+# Data & indexes (keep data/.gitkeep)
+data/*
+!data/.gitkeep
+
+backend/database/*
+!backend/database/.gitkeep
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Hugging Face cache (optional; remove if you want to track)
+# .cache/
