@@ -49,7 +49,7 @@ def rebuild_index(
     clip = get_clip_service()
     store = get_faiss_store()
 
-    cap = settings.max_frames_per_video
+    max_frames = settings.max_frames_per_video
     images, videos = scan_media(root)
     meta: list[dict] = []
     vectors: list[np.ndarray] = []
@@ -58,28 +58,28 @@ def rebuild_index(
         if progress_callback:
             progress_callback(len(vectors))
 
-    for img_path in images:
+    for image_file_path in images:
         try:
-            pil = Image.open(img_path).convert("RGB")
+            pil = Image.open(image_file_path).convert("RGB")
         except OSError as e:
-            logger.warning("Skip image %s: %s", img_path, e)
+            logger.warning("Skip image %s: %s", image_file_path, e)
             continue
-        emb = clip.encode_images([pil])
-        vectors.append(emb)
-        meta.append(_metadata_record_for_image_file(img_path, media_root))
+        embedding = clip.encode_images([pil])
+        vectors.append(embedding)
+        meta.append(_metadata_record_for_image_file(image_file_path, media_root))
         report_current_embedding_count()
 
-    for vid_path in videos:
+    for video_file_path in videos:
         try:
-            for t_sec, pil in iter_frames_one_fps(vid_path, max_frames=cap):
-                emb = clip.encode_images([pil])
-                vectors.append(emb)
+            for timestamp_sec, pil in iter_frames_one_fps(video_file_path, max_frames=max_frames):
+                embedding = clip.encode_images([pil])
+                vectors.append(embedding)
                 meta.append(
-                    _metadata_record_for_video_frame(vid_path, media_root, float(t_sec))
+                    _metadata_record_for_video_frame(video_file_path, media_root, float(timestamp_sec))
                 )
                 report_current_embedding_count()
         except Exception as e:  # noqa: BLE001
-            logger.warning("Skip video %s: %s", vid_path, e)
+            logger.warning("Skip video %s: %s", video_file_path, e)
             continue
 
     if not vectors:

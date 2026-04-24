@@ -3,7 +3,7 @@ import logging
 from fastapi import APIRouter, BackgroundTasks, HTTPException
 from fastapi.responses import JSONResponse
 
-from app.api.schemas import (
+from app.schemas.schemas import (
     IndexAccepted,
     IndexRequest,
     IndexResponse,

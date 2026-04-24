@@ -109,9 +109,9 @@ class FaissStore:
         if self._gpu_index is not None and faiss.get_num_gpus() > 0:
             cpu = faiss.index_gpu_to_cpu(self._gpu_index)  # type: ignore[assignment]
         assert cpu is not None
-        d = self.index_path.parent
-        faiss_new = d / "faiss.index.new"
-        sqlite_new = d / "metadata.sqlite.new"
+        index_dir = self.index_path.parent
+        faiss_new = index_dir / "faiss.index.new"
+        sqlite_new = index_dir / "metadata.sqlite.new"
         try:
             faiss.write_index(cpu, str(faiss_new))
             write_rows_file(sqlite_new, self.metadata)
@@ -155,11 +155,11 @@ class FaissStore:
             raise CorruptIndexError("Index metadata is inconsistent; run POST /index again")
         if self._cpu_index is None or not self.metadata:
             return []
-        q = query.reshape(1, -1).astype(np.float32)
-        faiss.normalize_L2(q)
-        idx = self._ensure_search_index()
-        k = min(top_k, len(self.metadata))
-        scores, ids = idx.search(q, k)
+        query_vector = query.reshape(1, -1).astype(np.float32)
+        faiss.normalize_L2(query_vector)
+        search_index = self._ensure_search_index()
+        max_results = min(top_k, len(self.metadata))
+        scores, ids = search_index.search(query_vector, max_results)
         results: list[tuple[dict[str, Any], float]] = []
         for score, i in zip(scores[0], ids[0], strict=True):
             if i < 0:

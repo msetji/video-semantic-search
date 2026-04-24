@@ -2,7 +2,7 @@ import logging
 
 from fastapi import APIRouter, HTTPException
 
-from app.api.schemas import SearchHit, SearchRequest, SearchResponse
+from app.schemas.schemas import SearchHit, SearchRequest, SearchResponse
 from app.config import settings
 from app.exceptions import CorruptIndexError
 from app.services.clip_service import get_clip_service

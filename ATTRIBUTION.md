@@ -4,6 +4,6 @@ Log any generative AI assistance used on this project. Add one row per tool/sess
 
 | Date       | Tool        | What you used it for | What you reviewed/changed manually |
 |------------|-------------|----------------------|-------------------------------------|
-| YYYY-MM-DD | (e.g. Cursor, ChatGPT, Copilot) | | |
+| 2026-04-23 | Antigravity AI | Refactored frontend to standard React file tree, updated backend variable names for readability, and aligned README with the final project handout. | Reviewed the architectural changes to ensure functionality remained exact. |
 
 **Policy:** Follow the course and department rules for disclosure. This file is a template; keep it accurate for grading.

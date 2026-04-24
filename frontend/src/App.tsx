@@ -1,60 +1,9 @@
 import { type FormEvent, useMemo, useState } from 'react'
-
-import {
-  absoluteUrlForMediaPreview,
-  isRasterImageFilePath,
-  previewUsesVideoElement,
-} from './mediaPaths'
+import type { SearchHit, SearchResponse } from './types'
+import { MediaPreview } from './components/MediaPreview'
+import { absoluteUrlForMediaPreview } from './utils/mediaPaths'
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? ''
-
-type SearchHit = {
-  path: string
-  kind: string
-  time_sec: number | null
-  score: number
-  media_url: string
-}
-
-type SearchResponse = {
-  query: string
-  results: SearchHit[]
-}
-
-function MediaPreview({
-  hit,
-  src,
-}: {
-  hit: SearchHit
-  src: string
-}) {
-  if (previewUsesVideoElement(hit)) {
-    return (
-      <video
-        className="h-full w-full object-cover"
-        src={src}
-        muted
-        playsInline
-        preload="metadata"
-        onLoadedMetadata={(e) => {
-          const el = e.currentTarget
-          const t = hit.time_sec ?? 0
-          el.currentTime = Math.min(Math.max(0, t), Math.max(0, el.duration - 0.05))
-        }}
-      />
-    )
-  }
-  if (isRasterImageFilePath(hit.path)) {
-    return (
-      <img src={src} alt="" className="h-full w-full object-cover" loading="lazy" />
-    )
-  }
-  return (
-    <div className="flex h-full w-full items-center justify-center bg-zinc-900 text-sm text-zinc-500">
-      Unsupported preview
-    </div>
-  )
-}
 
 function App() {
   const [query, setQuery] = useState('')
