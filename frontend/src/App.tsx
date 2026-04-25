@@ -10,6 +10,9 @@ function App() {
   const [results, setResults] = useState<SearchHit[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  
+  const [indexRootPath, setIndexRootPath] = useState('')
+  const [indexStatus, setIndexStatus] = useState<string | null>(null)
 
   const mediaBase = useMemo(() => API_BASE.replace(/\/$/, ''), [])
 
@@ -35,6 +38,39 @@ function App() {
       setResults([])
     } finally {
       setLoading(false)
+    }
+  }
+
+  async function handleBrowseDirectory() {
+    try {
+      const res = await fetch(`${API_BASE}/api/system/browse-directory`)
+      if (res.ok) {
+        const data = await res.json()
+        if (data.path) {
+          setIndexRootPath(data.path)
+        }
+      }
+    } catch (e) {
+      console.error(e)
+    }
+  }
+
+  async function handleStartIndex() {
+    setIndexStatus('Starting index...')
+    try {
+      const res = await fetch(`${API_BASE}/index`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ root_path: indexRootPath || null, run_in_background: true }),
+      })
+      if (res.ok) {
+        setIndexStatus('Indexing background task started. Check backend logs for progress.')
+      } else {
+        const text = await res.text()
+        setIndexStatus('Error: ' + text)
+      }
+    } catch (e) {
+      setIndexStatus('Request failed.')
     }
   }
 
@@ -73,6 +109,36 @@ function App() {
           </form>
         </div>
       </header>
+
+      <section className="border-b border-zinc-800 bg-zinc-900/40 px-4 py-3">
+        <div className="mx-auto flex max-w-6xl flex-col gap-3 sm:flex-row sm:items-center sm:justify-between text-sm">
+          <div className="flex items-center gap-2 w-full max-w-lg">
+            <span className="text-zinc-400 font-medium whitespace-nowrap">Indexer:</span>
+            <input
+              type="text"
+              value={indexRootPath}
+              onChange={(e) => setIndexRootPath(e.target.value)}
+              placeholder="System directory path... (C:\Videos)"
+              className="flex-1 rounded border border-zinc-700 bg-zinc-950 px-2 py-1.5 text-xs text-white placeholder:text-zinc-600 focus:border-violet-500 focus:outline-none"
+            />
+            <button
+              onClick={handleBrowseDirectory}
+              className="whitespace-nowrap rounded bg-zinc-800 px-3 py-1.5 text-xs font-medium text-zinc-300 hover:bg-zinc-700 hover:text-white"
+            >
+              Choose Directory
+            </button>
+          </div>
+          <div className="flex items-center gap-4">
+             {indexStatus && <span className="text-xs text-zinc-400">{indexStatus}</span>}
+             <button
+               onClick={handleStartIndex}
+               className="rounded bg-violet-600/20 text-violet-400 px-4 py-1.5 font-medium hover:bg-violet-600/30 whitespace-nowrap"
+             >
+               Process Embeddings
+             </button>
+          </div>
+        </div>
+      </section>
 
       <main className="mx-auto max-w-6xl px-4 py-8">
         {error && (
