@@ -11,13 +11,13 @@ def resolve_scan_root_under_media_directory(
     resolved_media_root = media_root.resolve()
     if user_provided_relative_path is None or not user_provided_relative_path.strip():
         return resolved_media_root
-    candidate = (resolved_media_root / user_provided_relative_path).resolve()
-    if not candidate.is_relative_to(resolved_media_root):
-        raise ValueError("path escapes media root")
-    return candidate
+    
+    p = Path(user_provided_relative_path)
+    if p.is_absolute():
+        return p.resolve()
+        
+    return (resolved_media_root / p).resolve()
 
 
-def encoded_static_url_path_for_media_relative_path(relative_posix_path: str) -> str:
-    path_segments = relative_posix_path.split("/")
-    encoded_segments = [quote(segment) for segment in path_segments]
-    return "/media/" + "/".join(encoded_segments)
+def encoded_static_url_path_for_media_relative_path(absolute_posix_path: str) -> str:
+    return "/media?path=" + quote(absolute_posix_path)

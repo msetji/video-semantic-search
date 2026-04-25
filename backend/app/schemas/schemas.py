@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field
 class IndexRequest(BaseModel):
     root_path: str | None = Field(
         default=None,
-        description="Path relative to MEDIA_ROOT (e.g. 'vacation'). Empty = scan all of MEDIA_ROOT.",
+        description="Absolute path to index, or Path relative to MEDIA_ROOT (e.g. 'vacation'). Empty = scan all of MEDIA_ROOT.",
     )
     run_in_background: bool = Field(
         default=False,

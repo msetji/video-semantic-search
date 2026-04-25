@@ -25,7 +25,7 @@ class CLIPService:
         if self.device.type != "cuda":
             logger.warning("CUDA not available; CLIP running on CPU.")
         self.processor = CLIPProcessor.from_pretrained(mid)
-        self.model = CLIPModel.from_pretrained(mid).to(self.device)
+        self.model = CLIPModel.from_pretrained(mid, use_safetensors=True).to(self.device)
         self.model.eval()
         hidden = self.model.config.projection_dim
         self.embedding_dim: int = int(hidden)
@@ -38,6 +38,10 @@ class CLIPService:
             inputs = self.processor(images=batch, return_tensors="pt", padding=True)
             inputs = {k: v.to(self.device) for k, v in inputs.items()}
             feats = self.model.get_image_features(**inputs)
+            if not isinstance(feats, torch.Tensor):
+                feats = getattr(feats, "pooler_output", feats)
+                if not isinstance(feats, torch.Tensor):
+                    feats = feats[1] # tuple fallback
             feats = feats / feats.norm(dim=-1, keepdim=True)
             out.append(feats.cpu().numpy().astype(np.float32))
         if not out:
@@ -49,6 +53,10 @@ class CLIPService:
         inputs = self.processor(text=texts, return_tensors="pt", padding=True)
         inputs = {k: v.to(self.device) for k, v in inputs.items()}
         feats = self.model.get_text_features(**inputs)
+        if not isinstance(feats, torch.Tensor):
+            feats = getattr(feats, "pooler_output", feats)
+            if not isinstance(feats, torch.Tensor):
+                feats = feats[1] # tuple fallback
         feats = feats / feats.norm(dim=-1, keepdim=True)
         return feats.cpu().numpy().astype(np.float32)
 

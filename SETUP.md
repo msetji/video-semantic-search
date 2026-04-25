@@ -12,16 +12,20 @@ If `faiss-gpu` or CUDA PyTorch packages fail to solve on a machine without a sui
 
 ## 1. Conda environment
 
-From the repository root:
+If you are on Windows, open an **Anaconda Prompt** or **Miniconda Prompt** terminal (normal PowerShell or Command Prompt often will not recognize `conda` out-of-the-box). Then, from the repository root:
 
 ```bash
 mamba env create -f environment.yml
+# If you don't have mamba, you can use:
+# conda env create -f environment.yml
+
 conda activate video-semantic-search
 ```
 
 ## 2. Media directory
 
-Put photos (`.jpg`, `.jpeg`, `.png`, `.webp`) and videos (`.mp4`) under `data/`, or replace `data/` with a symlink to a larger volume. The API only reads files inside this tree.
+You **do not** need to move your photos (`.jpg`, `.jpeg`, `.png`, `.webp`) and videos (`.mp4`) to the `data/` directory!
+The Video Semantic Search app has been upgraded to support absolute native directory mapping. When the frontend is running, you can simply click the **"Choose Directory"** button and pick any folder straight off your Windows hard drive. 
 
 ## 3. Backend (FastAPI)
 
@@ -31,13 +35,13 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
 - **Health:** `GET http://127.0.0.1:8000/health`
-- **Build / refresh index (blocking):** `POST http://127.0.0.1:8000/index` with JSON `{}` to scan all of `data/`, or `{"root_path": "subfolder"}` for `data/subfolder` only.
-- **Build index in background:** `POST` with `{"run_in_background": true}` → **202 Accepted**; poll **`GET http://127.0.0.1:8000/index/status`**. In-memory status **resets when the server restarts**.
+- **Build / refresh index (blocking):** `POST http://127.0.0.1:8000/index` with JSON `{"root_path": "C:\\Path\\To\\Videos"}` to scan an absolute path on your disk, or leave `{"root_path": null}` to fallback to the internal `data/` folder.
+- **Build index in background:** `POST` with `{"run_in_background": true}` → **202 Accepted**; poll **`GET http://127.0.0.1:8000/index/status`**. In-memory status **resets when the server restarts**. (Tip: You can start the background index directly from the frontend UI).
 - **Search:** `POST http://127.0.0.1:8000/search` with `{"query": "your text", "top_k": 10}`. Returns **503** if the on-disk index is **corrupt** (metadata/FAISS mismatch); run `POST /index` again.
 
 **Concurrency:** Only one indexing job may be **running** at a time. A second `POST /index` with `run_in_background: true` returns **409** while a background job is running. A synchronous `POST /index` returns **503** if a background indexer has reserved the job (`index_state` shows running).
 
-Static files are exposed at `/media/...` relative to `data/`.
+Static files are dynamically streamed via the `GET /media?path={absolute_path}` endpoint pointing directly to the OS disk.
 
 Optional environment (see `backend/app/config.py`): `MEDIA_ROOT`, **`MAX_FRAMES_PER_VIDEO`** (default **7200** ≈ 2 hours at 1 FPS sampled frames per MP4; longer clips are truncated).
 

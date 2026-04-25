@@ -54,41 +54,71 @@ def rebuild_index(
     meta: list[dict] = []
     vectors: list[np.ndarray] = []
 
-    def report_current_embedding_count() -> None:
+    BATCH_SIZE = 128
+    batch_pils: list[Image.Image] = []
+    batch_meta: list[dict] = []
+
+    def flush_batch() -> None:
+        if not batch_pils:
+            return
+        embeddings = clip.encode_images(batch_pils, batch_size=BATCH_SIZE)
+        vectors.append(embeddings)
+        
+        start_idx = len(meta)
+        meta.extend(batch_meta)
+        end_idx = len(meta)
+        
+        for i in range(start_idx + 1, end_idx + 1):
+            logger.info("Progress: Finished embedding %d", i)
+            
         if progress_callback:
-            progress_callback(len(vectors))
+            progress_callback(end_idx)
+            
+        batch_pils.clear()
+        batch_meta.clear()
+
+    logger.info("Starting indexing. Found %d images and %d videos.", len(images), len(videos))
 
     for image_file_path in images:
+        logger.info("Processing image: %s", image_file_path.name)
         try:
             pil = Image.open(image_file_path).convert("RGB")
         except OSError as e:
             logger.warning("Skip image %s: %s", image_file_path, e)
             continue
-        embedding = clip.encode_images([pil])
-        vectors.append(embedding)
-        meta.append(_metadata_record_for_image_file(image_file_path, media_root))
-        report_current_embedding_count()
+            
+        batch_pils.append(pil)
+        batch_meta.append(_metadata_record_for_image_file(image_file_path, media_root))
+        if len(batch_pils) >= BATCH_SIZE:
+            flush_batch()
 
     for video_file_path in videos:
+        logger.info("Processing video: %s", video_file_path.name)
         try:
             for timestamp_sec, pil in iter_frames_one_fps(video_file_path, max_frames=max_frames):
-                embedding = clip.encode_images([pil])
-                vectors.append(embedding)
-                meta.append(
+                batch_pils.append(pil)
+                batch_meta.append(
                     _metadata_record_for_video_frame(video_file_path, media_root, float(timestamp_sec))
                 )
-                report_current_embedding_count()
+                if len(batch_pils) >= BATCH_SIZE:
+                    flush_batch()
         except Exception as e:  # noqa: BLE001
             logger.warning("Skip video %s: %s", video_file_path, e)
             continue
 
+    flush_batch()
+
     if not vectors:
         dim = clip.embedding_dim
         store.replace(np.zeros((0, dim), dtype=np.float32), [])
+        logger.info("No media found. Cleared index.")
     else:
         all_vec = np.vstack(vectors).astype(np.float32)
         store.replace(all_vec, meta)
+        logger.info("Saved %d embeddings to the index.", len(vectors))
     store.save()
+
+    logger.info("Indexing completed successfully.")
 
     return {
         "root": str(root),

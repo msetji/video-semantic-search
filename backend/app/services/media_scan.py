@@ -24,4 +24,4 @@ def scan_media(root: Path) -> tuple[list[Path], list[Path]]:
 
 
 def relative_under_media(path: Path, media_root: Path) -> str:
-    return path.resolve().relative_to(media_root.resolve()).as_posix()
+    return path.resolve().as_posix()
