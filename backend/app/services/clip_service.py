@@ -30,12 +30,17 @@ class CLIPService:
         self.model.eval()
         hidden = self.model.config.projection_dim
         self.embedding_dim: int = int(hidden)
-        logger.info("CLIP ready — embedding_dim=%d device=%s", self.embedding_dim, self.device)
+        fp16 = self.device.type == "cuda"
+        logger.info(
+            "CLIP ready — model=%s embedding_dim=%d device=%s fp16_autocast=%s",
+            mid, self.embedding_dim, self.device, fp16,
+        )
 
     @torch.inference_mode()
     def encode_preprocessed(self, inputs: dict[str, "torch.Tensor"]) -> np.ndarray:
         inputs = {k: v.to(self.device, non_blocking=True) for k, v in inputs.items()}
-        feats = self.model.get_image_features(**inputs)
+        with torch.autocast(self.device.type, dtype=torch.float16, enabled=self.device.type == "cuda"):
+            feats = self.model.get_image_features(**inputs)
         if not isinstance(feats, torch.Tensor):
             feats = getattr(feats, "pooler_output", feats)
             if not isinstance(feats, torch.Tensor):

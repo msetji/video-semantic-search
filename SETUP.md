@@ -81,6 +81,8 @@ python scripts/sample_video_frames.py path/to/video.mp4 ./out_frames
 
 Adds `backend/` to `sys.path` and reuses `app.services.video_sampling`. Indexing uses the same ~1 FPS stride; see [DESIGN.md](DESIGN.md) for rationale and the **7200** frame cap.
 
+Optional dev-only helpers (not part of the graded app) live under `scripts/dev/` — for example `probe_nvdec.py` (PyAV / NVDEC availability), `test_sampling.py`, and `test_batch_timing.py`. Run paths from the repo root; each file documents its CLI in the module docstring.
+
 ## 7. Benchmarks (reporting throughput and latency)
 
 With the conda env active:

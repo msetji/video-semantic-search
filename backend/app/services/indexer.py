@@ -8,6 +8,7 @@ from concurrent.futures import Future, ThreadPoolExecutor
 from functools import partial
 from pathlib import Path
 
+import cv2
 import numpy as np
 import torch
 from PIL import Image
@@ -40,10 +41,24 @@ fast_transform = transforms.Compose([
 ])
 
 
+_LARGE_PX = 512  # shorter-side threshold above which we pre-downscale with cv2
+
+
+def _to_model_input(pil: Image.Image) -> dict[str, torch.Tensor]:
+    w, h = pil.size
+    if min(w, h) > _LARGE_PX:
+        # Fast area-average to ~320 px on the shorter side so that the
+        # subsequent BICUBIC step operates on a small image instead of 8 MP.
+        scale = 320.0 / min(w, h)
+        nw, nh = max(224, int(w * scale)), max(224, int(h * scale))
+        arr = cv2.resize(np.array(pil), (nw, nh), interpolation=cv2.INTER_AREA)
+        pil = Image.fromarray(arr)
+    return {"pixel_values": fast_transform(pil).unsqueeze(0)}
+
+
 def _load_and_preprocess(path: Path) -> dict[str, torch.Tensor] | None:
     try:
-        pil = Image.open(path).convert("RGB")
-        return {"pixel_values": fast_transform(pil).unsqueeze(0)}
+        return _to_model_input(Image.open(path).convert("RGB"))
     except Exception as e:
         logger.warning("Skip image %s: %s", path, e)
         return None
@@ -51,7 +66,7 @@ def _load_and_preprocess(path: Path) -> dict[str, torch.Tensor] | None:
 
 def _preprocess_pil(pil: Image.Image) -> dict[str, torch.Tensor] | None:
     try:
-        return {"pixel_values": fast_transform(pil).unsqueeze(0)}
+        return _to_model_input(pil)
     except Exception as e:
         logger.warning("Skip frame: %s", e)
         return None
@@ -99,7 +114,7 @@ def rebuild_index(
     total_files = len(images) + len(videos)
     files_done = 0
 
-    BATCH_SIZE = 32
+    BATCH_SIZE = 256
     batch_inputs: list[dict] = []
     batch_meta: list[dict] = []
 
@@ -109,6 +124,8 @@ def rebuild_index(
         batch_size = len(batch_inputs)
         t_encode = time.perf_counter()
         stacked = {k: torch.cat([item[k] for item in batch_inputs]) for k in batch_inputs[0]}
+        if clip.device.type == "cuda":
+            stacked = {k: v.pin_memory() if not v.is_cuda else v for k, v in stacked.items()}
         embeddings = clip.encode_preprocessed(stacked)
         encode_ms = (time.perf_counter() - t_encode) * 1000
 
@@ -119,9 +136,10 @@ def rebuild_index(
             progress_callback(len(meta))
 
         logger.info(
-            "Encoded batch: %d items in %.0f ms — running total: %d embeddings",
+            "Encoded batch: %d items in %.0f ms (%.0f emb/s) — running total: %d embeddings",
             batch_size,
             encode_ms,
+            batch_size / (encode_ms / 1000) if encode_ms > 0 else 0,
             len(meta),
         )
         batch_inputs.clear()
@@ -153,9 +171,9 @@ def rebuild_index(
                 pass
 
             logger.info("Processing image: %s", image_file_path.name)
+            files_done += 1
             if file_progress_callback:
                 file_progress_callback(image_file_path.name, files_done, total_files)
-            files_done += 1
 
             inputs = future.result()
             if inputs is None:
@@ -184,22 +202,35 @@ def rebuild_index(
                 raise IndexCancelledError()
 
             logger.info("Processing video: %s", video_file_path.name)
+            files_done += 1
             if file_progress_callback:
                 file_progress_callback(video_file_path.name, files_done, total_files)
+            t_video = time.perf_counter()
+            frame_count = 0
             try:
-                for timestamp_sec, pil in iter_frames_one_fps(video_file_path, max_frames=max_frames):
+                for timestamp_sec, frame in iter_frames_one_fps(video_file_path, max_frames=max_frames):
+                    frame_count += 1
                     frame_meta = _metadata_record_for_video_frame(video_file_path, media_root, float(timestamp_sec))
-                    in_flight_videos.append((pool.submit(_preprocess_pil, pil), frame_meta))
+                    in_flight_videos.append((pool.submit(_preprocess_pil, frame), frame_meta))
                     drain_video_tasks(VIDEO_PREFETCH)
             except IndexCancelledError:
                 raise
             except Exception as e:  # noqa: BLE001
                 logger.warning("Skip video %s: %s", video_file_path, e)
-            files_done += 1
+            logger.info(
+                "Video %s: %d frames in %.0f ms",
+                video_file_path.name, frame_count, (time.perf_counter() - t_video) * 1000,
+            )
 
         drain_video_tasks(0)
 
     flush_batch()
+
+    # Free temporary VRAM (activation buffers, pinned batch tensors).
+    # Model weights remain resident since CLIPService is a singleton.
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+        logger.info("GPU VRAM cache cleared after indexing.")
 
     if not vectors:
         dim = clip.embedding_dim

@@ -69,12 +69,14 @@ def set_file_progress(current_file: str, files_done: int, total_files: int) -> N
 
 
 def complete(result: dict[str, Any]) -> None:
-    global _status, _detail, _last_result, _finished_at
+    global _status, _detail, _last_result, _finished_at, _files_done
     with _lock:
         _status = "completed"
         _detail = "done"
         _last_result = result
         _finished_at = time.time()
+        # Pin files_done to total_files so the UI always shows N/N on completion.
+        _files_done = _total_files
 
 
 def request_cancel() -> bool:

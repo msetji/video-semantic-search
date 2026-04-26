@@ -1,4 +1,5 @@
 import logging
+import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -19,7 +20,6 @@ class _SuppressPolling(logging.Filter):
 logging.getLogger("uvicorn.access").addFilter(_SuppressPolling())
 
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
 
 from app.api import index as index_routes
 from app.api import library as library_routes
@@ -79,4 +79,45 @@ def browse_directory():
     root.destroy()
     
     return {"path": folder_path}
+
+
+def _is_same_or_inside_directory(child_norm: str, root_norm: str) -> bool:
+    """Path-boundary check using normcase (Windows-safe). child_norm/root_norm from normpath."""
+    c = os.path.normcase(child_norm)
+    r = os.path.normcase(root_norm)
+    return c == r or c.startswith(r + os.sep)
+
+
+@app.post("/api/system/reveal-file")
+def reveal_file(body: dict):
+    import subprocess
+    from pathlib import Path
+    from fastapi import HTTPException
+
+    rel = body.get("path", "")
+    if not isinstance(rel, str) or not rel.strip():
+        raise HTTPException(status_code=400, detail="path is required")
+    rel = rel.strip()
+
+    media_root = settings.media_root.resolve()
+    root_norm = os.path.normpath(str(media_root))
+    p_in = Path(rel)
+
+    # Logical path under media_root (do not require resolved target to stay under
+    # media_root — symlinks/junctions may point elsewhere while the indexed path is under data).
+    if p_in.is_absolute():
+        logical_norm = os.path.normpath(str(p_in))
+    else:
+        logical_norm = os.path.normpath(str((media_root / rel).resolve()))
+
+    if not _is_same_or_inside_directory(logical_norm, root_norm):
+        raise HTTPException(status_code=400, detail="Invalid path")
+
+    abs_path = Path(logical_norm).resolve()
+    if not abs_path.is_file():
+        raise HTTPException(status_code=404, detail="File not found")
+
+    # /select highlights the file in Explorer without opening it
+    subprocess.Popen(["explorer", "/select,", str(abs_path)])
+    return {"revealed": str(abs_path)}
 

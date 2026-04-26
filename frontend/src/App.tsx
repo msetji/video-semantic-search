@@ -116,10 +116,10 @@ function App() {
         startPolling()
       } else {
         const data = await res.json().catch(() => null)
-        setIndexStatus({ status: 'failed', error: data?.detail ?? res.statusText, detail: null, embeddings_written: 0, total_files: 0, files_done: 0, current_file: null, started_at: null, finished_at: null })
+        setIndexStatus({ status: 'failed', error: data?.detail ?? res.statusText, detail: null, embeddings_written: 0, total_files: 0, files_done: 0, current_file: null, started_at: null, finished_at: null, last_result: null })
       }
     } catch {
-      setIndexStatus({ status: 'failed', error: 'Request failed', detail: null, embeddings_written: 0, total_files: 0, files_done: 0, current_file: null, started_at: null, finished_at: null })
+      setIndexStatus({ status: 'failed', error: 'Request failed', detail: null, embeddings_written: 0, total_files: 0, files_done: 0, current_file: null, started_at: null, finished_at: null, last_result: null })
     }
   }
 
@@ -270,7 +270,7 @@ function App() {
                     <div className="h-1.5 w-full rounded-full bg-zinc-800 overflow-hidden">
                       <div
                         className={`h-full rounded-full transition-all duration-300 ${indexStatus.status === 'completed' ? 'bg-emerald-500' : indexStatus.status === 'failed' ? 'bg-red-500' : indexStatus.status === 'cancelled' ? 'bg-zinc-600' : 'bg-violet-500'}`}
-                        style={{ width: `${Math.round((indexStatus.files_done / indexStatus.total_files) * 100)}%` }}
+                        style={{ width: `${indexStatus.status === 'completed' ? 100 : Math.round((indexStatus.files_done / indexStatus.total_files) * 100)}%` }}
                       />
                     </div>
                   )}

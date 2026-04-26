@@ -52,6 +52,6 @@ def test_resolve_scan_root_rejects_absolute_path_style_escape(tmp_path: Path) ->
 
 def test_encoded_static_url_percent_encodes_path_segments() -> None:
     url = encoded_static_url_path_for_media_relative_path("my folder/clip#1.mp4")
-    assert url.startswith("/media/")
+    assert url.startswith("/media?path=")
     assert "my%20folder" in url
     assert "clip%231" in url
