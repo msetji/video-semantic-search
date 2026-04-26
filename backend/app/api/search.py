@@ -17,6 +17,8 @@ router = APIRouter(tags=["search"])
 
 @router.post("/search", response_model=SearchResponse)
 def search(body: SearchRequest) -> SearchResponse:
+    logger.info("Search request: query=%r top_k=%d", body.query, body.top_k)
+    t0 = time.perf_counter()
     try:
         clip = get_clip_service()
         store = get_faiss_store()
@@ -37,12 +39,10 @@ def search(body: SearchRequest) -> SearchResponse:
             (body.query[:120] + "…") if len(body.query) > 120 else body.query,
         )
     except CorruptIndexError as e:
-        raise HTTPException(
-            status_code=503,
-            detail=str(e),
-        ) from e
+        logger.error("Search aborted — corrupt index: %s", e)
+        raise HTTPException(status_code=503, detail=str(e)) from e
     except Exception as e:  # noqa: BLE001
-        logger.exception("Search failed")
+        logger.exception("Search failed for query=%r", body.query)
         raise HTTPException(status_code=500, detail=str(e)) from e
 
     hits: list[SearchHit] = []
