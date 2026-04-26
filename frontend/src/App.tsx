@@ -51,6 +51,10 @@ function App() {
   const [page, setPage] = useState<'search' | 'library' | 'benchmarks' | 'logs' | 'about'>('search')
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const [, setElapsedTick] = useState(0)
+  /** Bumps whenever we commit a new result set so list keys remount previews (video elements otherwise keep stale frames when `src` is unchanged). */
+  const [resultsEpoch, setResultsEpoch] = useState(0)
+  const searchAbortRef = useRef<AbortController | null>(null)
+  const searchTokenRef = useRef(0)
 
   const mediaBase = useMemo(() => API_BASE.replace(/\/$/, ''), [])
 
@@ -102,6 +106,10 @@ function App() {
   async function handleSearchFormSubmit(e: FormEvent) {
     e.preventDefault()
     if (!query.trim()) return
+    searchAbortRef.current?.abort()
+    const ac = new AbortController()
+    searchAbortRef.current = ac
+    const token = ++searchTokenRef.current
     setLoading(true)
     setError(null)
     try {
@@ -113,18 +121,26 @@ function App() {
           top_k: topK,
           media_filter: mediaFilter,
         }),
+        signal: ac.signal,
       })
       if (!res.ok) {
         const text = await res.text()
         throw new Error(text || res.statusText)
       }
       const data: SearchResponse = await res.json()
+      if (token !== searchTokenRef.current) return
+      setResultsEpoch((n) => n + 1)
       setResults(data.results)
     } catch (err) {
+      if (token !== searchTokenRef.current) return
+      if (err instanceof DOMException && err.name === 'AbortError') return
       setError(err instanceof Error ? err.message : 'Search failed')
+      setResultsEpoch((n) => n + 1)
       setResults([])
     } finally {
-      setLoading(false)
+      if (token === searchTokenRef.current) {
+        setLoading(false)
+      }
     }
   }
 
@@ -437,12 +453,12 @@ function App() {
             )}
 
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {results.map((hit) => {
+              {results.map((hit, index) => {
                 const src = absoluteUrlForMediaPreview(mediaBase, hit.media_url)
                 const match = clipMatchLabel(hit.score)
                 return (
                   <article
-                    key={`${hit.path}-${hit.time_sec ?? 'img'}-${hit.score}`}
+                    key={`${resultsEpoch}-${index}-${hit.path}-${hit.time_sec ?? 'img'}-${hit.score}`}
                     className="overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900/60 shadow-sm"
                   >
                     <div className="aspect-video w-full bg-zinc-900">

@@ -48,10 +48,19 @@ def iter_frames_one_fps(
             yield from _iter_pyav_nvdec(video_path, max_frames=max_frames)
             return
         except Exception as exc:
-            logger.warning(
-                "NVDEC failed for %s (%s) — falling back to OpenCV",
-                video_path.name, exc,
-            )
+            # Expected for some DJI / HEVC clips (no usable keyframe decode or no PTS on hw frames).
+            if isinstance(exc, RuntimeError) and "fallback required" in str(exc):
+                logger.info(
+                    "NVDEC keyframe path skipped for %s (%s) — using OpenCV",
+                    video_path.name,
+                    exc,
+                )
+            else:
+                logger.warning(
+                    "NVDEC failed for %s (%s) — falling back to OpenCV",
+                    video_path.name,
+                    exc,
+                )
     yield from _iter_opencv(video_path, max_frames=max_frames)
 
 
@@ -100,9 +109,12 @@ def _iter_pyav_nvdec(
     # Step 3 — open container again (sw decoder drives the demuxer)
     #           and copy stream parameters into hw_ctx before opening it
     container = av.open(str(video_path))
+    emitted = 0
+    t_decode_sum = 0.0
     try:
         vs = container.streams.video[0]
         sw_ctx = vs.codec_context
+        tb = vs.time_base
 
         hw_ctx.width  = sw_ctx.width
         hw_ctx.height = sw_ctx.height
@@ -120,9 +132,7 @@ def _iter_pyav_nvdec(
         )
 
         # Step 4 — demux via sw container, decode via hw_ctx
-        emitted       = 0
-        last_time     = -1.0
-        t_decode_sum  = 0.0
+        last_time = -1.0
 
         for packet in container.demux(vs):
             if not packet.is_keyframe:
@@ -134,14 +144,17 @@ def _iter_pyav_nvdec(
             t_decode_sum += time.perf_counter() - t_d
 
             for frame in frames:
-                if frame.pts is None:
+                pts = frame.pts
+                if pts is None:
+                    pts = packet.pts
+                if pts is None or tb is None:
                     continue
-                time_sec = float(frame.pts * vs.time_base)
+                time_sec = float(pts * tb)
                 if time_sec - last_time < 1.0:
                     continue
                 yield time_sec, frame.to_image()
                 last_time = time_sec
-                emitted  += 1
+                emitted += 1
                 if max_frames is not None and emitted >= max_frames:
                     return
 
