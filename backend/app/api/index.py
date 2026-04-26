@@ -3,6 +3,7 @@ import logging
 from fastapi import APIRouter, BackgroundTasks, HTTPException
 from fastapi.responses import JSONResponse
 
+from app.exceptions import IndexCancelledError
 from app.schemas.schemas import (
     IndexAccepted,
     IndexRequest,
@@ -33,6 +34,9 @@ def run_scheduled_background_index_job(root_path: str | None) -> None:
     with INDEXING_LOCK:
         try:
             _rebuild_index_and_mark_state_completed(root_path)
+        except IndexCancelledError:
+            logger.info("Background indexing was cancelled by user.")
+            index_state.mark_cancelled()
         except Exception as e:  # noqa: BLE001
             logger.exception("Background indexing failed")
             index_state.fail(str(e))
@@ -75,3 +79,11 @@ def run_index(body: IndexRequest, background_tasks: BackgroundTasks):
 @router.get("/index/status", response_model=IndexStatusResponse)
 def index_status() -> IndexStatusResponse:
     return snapshot_to_status(index_state.snapshot())
+
+
+@router.post("/index/cancel")
+def cancel_index():
+    if not index_state.request_cancel():
+        raise HTTPException(status_code=409, detail="No indexing job is currently running.")
+    logger.info("Cancellation requested by user.")
+    return {"status": "cancel_requested"}

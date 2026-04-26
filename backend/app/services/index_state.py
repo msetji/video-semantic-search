@@ -5,6 +5,7 @@ import time
 from typing import Any
 
 _lock = threading.Lock()
+_cancel_event = threading.Event()
 _status: str = "idle"
 _detail: str | None = None
 _last_result: dict[str, Any] | None = None
@@ -39,6 +40,7 @@ def is_running() -> bool:
 
 def start() -> None:
     global _status, _detail, _error, _last_result, _embedding_count, _started_at, _finished_at, _current_file, _total_files, _files_done
+    _cancel_event.clear()
     with _lock:
         _status = "running"
         _detail = "indexing"
@@ -72,6 +74,28 @@ def complete(result: dict[str, Any]) -> None:
         _status = "completed"
         _detail = "done"
         _last_result = result
+        _finished_at = time.time()
+
+
+def request_cancel() -> bool:
+    """Signal a running indexer to stop. Returns False if nothing was running."""
+    with _lock:
+        if _status != "running":
+            return False
+    _cancel_event.set()
+    return True
+
+
+def cancel_requested() -> bool:
+    return _cancel_event.is_set()
+
+
+def mark_cancelled() -> None:
+    global _status, _detail, _finished_at
+    _cancel_event.clear()
+    with _lock:
+        _status = "cancelled"
+        _detail = "Cancelled by user"
         _finished_at = time.time()
 
 

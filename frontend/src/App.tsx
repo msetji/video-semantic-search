@@ -16,6 +16,8 @@ function App() {
 
   const [indexRootPath, setIndexRootPath] = useState('')
   const [indexStatus, setIndexStatus] = useState<IndexStatus | null>(null)
+  const [cancelling, setCancelling] = useState(false)
+  const [topK, setTopK] = useState(12)
   const [page, setPage] = useState<'search' | 'library' | 'logs' | 'about'>('search')
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
@@ -41,8 +43,18 @@ function App() {
       if (status.status !== 'running') {
         clearInterval(pollRef.current!)
         pollRef.current = null
+        setCancelling(false)
       }
     }, 1000)
+  }
+
+  async function handleCancelIndex() {
+    setCancelling(true)
+    try {
+      await fetch(`${API_BASE}/index/cancel`, { method: 'POST' })
+    } catch {
+      setCancelling(false)
+    }
   }
 
   useEffect(() => {
@@ -60,7 +72,7 @@ function App() {
       const res = await fetch(`${API_BASE}/search`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query: query.trim(), top_k: 12 }),
+        body: JSON.stringify({ query: query.trim(), top_k: topK }),
       })
       if (!res.ok) {
         const text = await res.text()
@@ -164,6 +176,16 @@ function App() {
                 className="flex-1 rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-white placeholder:text-zinc-500 focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
                 aria-label="Search query"
               />
+              <select
+                value={topK}
+                onChange={e => setTopK(Number(e.target.value))}
+                className="rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-2 text-sm text-zinc-300 focus:border-violet-500 focus:outline-none"
+                aria-label="Number of results"
+              >
+                {[6, 12, 24, 48].map(n => (
+                  <option key={n} value={n}>{n} results</option>
+                ))}
+              </select>
               <button
                 type="submit"
                 disabled={loading}
@@ -198,13 +220,24 @@ function App() {
                     Choose Directory
                   </button>
                 </div>
-                <button
-                  onClick={handleStartIndex}
-                  disabled={indexStatus?.status === 'running'}
-                  className="rounded bg-violet-600/20 text-violet-400 px-4 py-1.5 font-medium hover:bg-violet-600/30 whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {indexStatus?.status === 'running' ? 'Indexing…' : 'Process Embeddings'}
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={handleStartIndex}
+                    disabled={indexStatus?.status === 'running'}
+                    className="rounded bg-violet-600/20 text-violet-400 px-4 py-1.5 font-medium hover:bg-violet-600/30 whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {indexStatus?.status === 'running' ? 'Indexing…' : 'Process Embeddings'}
+                  </button>
+                  {indexStatus?.status === 'running' && (
+                    <button
+                      onClick={handleCancelIndex}
+                      disabled={cancelling}
+                      className="rounded border border-zinc-600 px-3 py-1.5 text-xs font-medium text-zinc-400 hover:border-red-600 hover:text-red-400 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {cancelling ? 'Cancelling…' : 'Cancel'}
+                    </button>
+                  )}
+                </div>
               </div>
 
               {/* progress panel */}
@@ -216,11 +249,13 @@ function App() {
                       indexStatus.status === 'running' ? 'text-violet-400 font-medium' :
                       indexStatus.status === 'completed' ? 'text-emerald-400 font-medium' :
                       indexStatus.status === 'failed' ? 'text-red-400 font-medium' :
+                      indexStatus.status === 'cancelled' ? 'text-zinc-400 font-medium' :
                       'text-zinc-400'
                     }>
-                      {indexStatus.status === 'running' && 'Indexing…'}
+                      {indexStatus.status === 'running' && (cancelling ? 'Cancelling…' : 'Indexing…')}
                       {indexStatus.status === 'completed' && 'Done'}
                       {indexStatus.status === 'failed' && 'Failed'}
+                      {indexStatus.status === 'cancelled' && 'Cancelled'}
                     </span>
                     <span className="text-zinc-500">
                       {indexStatus.total_files > 0
@@ -234,7 +269,7 @@ function App() {
                   {indexStatus.total_files > 0 && (
                     <div className="h-1.5 w-full rounded-full bg-zinc-800 overflow-hidden">
                       <div
-                        className={`h-full rounded-full transition-all duration-300 ${indexStatus.status === 'completed' ? 'bg-emerald-500' : indexStatus.status === 'failed' ? 'bg-red-500' : 'bg-violet-500'}`}
+                        className={`h-full rounded-full transition-all duration-300 ${indexStatus.status === 'completed' ? 'bg-emerald-500' : indexStatus.status === 'failed' ? 'bg-red-500' : indexStatus.status === 'cancelled' ? 'bg-zinc-600' : 'bg-violet-500'}`}
                         style={{ width: `${Math.round((indexStatus.files_done / indexStatus.total_files) * 100)}%` }}
                       />
                     </div>

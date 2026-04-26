@@ -14,6 +14,8 @@ from PIL import Image
 from torchvision import transforms
 
 from app.config import settings
+from app.exceptions import IndexCancelledError
+from app.services import index_state
 from app.services.clip_service import get_clip_service
 from app.services.faiss_store import get_faiss_store
 from app.services.media_paths import resolve_scan_root_under_media_directory
@@ -139,6 +141,10 @@ def rebuild_index(
         image_iter = iter(images[_PREFETCH:])
 
         while in_flight:
+            if index_state.cancel_requested():
+                logger.info("Cancellation detected — stopping after %d files.", files_done)
+                raise IndexCancelledError()
+
             future, image_file_path = in_flight.popleft()
             try:
                 next_path = next(image_iter)
@@ -173,6 +179,10 @@ def rebuild_index(
                         flush_batch()
 
         for video_file_path in videos:
+            if index_state.cancel_requested():
+                logger.info("Cancellation detected — stopping after %d files.", files_done)
+                raise IndexCancelledError()
+
             logger.info("Processing video: %s", video_file_path.name)
             if file_progress_callback:
                 file_progress_callback(video_file_path.name, files_done, total_files)
@@ -181,10 +191,12 @@ def rebuild_index(
                     frame_meta = _metadata_record_for_video_frame(video_file_path, media_root, float(timestamp_sec))
                     in_flight_videos.append((pool.submit(_preprocess_pil, pil), frame_meta))
                     drain_video_tasks(VIDEO_PREFETCH)
+            except IndexCancelledError:
+                raise
             except Exception as e:  # noqa: BLE001
                 logger.warning("Skip video %s: %s", video_file_path, e)
             files_done += 1
-        
+
         drain_video_tasks(0)
 
     flush_batch()

@@ -41,7 +41,7 @@ export type IndexLastResult = {
 }
 
 export type IndexStatus = {
-  status: 'idle' | 'running' | 'completed' | 'failed' | string
+  status: 'idle' | 'running' | 'completed' | 'failed' | 'cancelled' | string
   detail: string | null
   error: string | null
   embeddings_written: number
