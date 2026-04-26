@@ -1,10 +1,29 @@
+import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+
+from app.logging_config import setup_logging
+
+setup_logging()
+
+
+class _SuppressPolling(logging.Filter):
+    _SUPPRESS = {"/index/status", "/api/logs"}
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        msg = record.getMessage()
+        return not any(path in msg for path in self._SUPPRESS)
+
+
+logging.getLogger("uvicorn.access").addFilter(_SuppressPolling())
+
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from app.api import index as index_routes
+from app.api import library as library_routes
+from app.api import logs as logs_routes
 from app.api import search as search_routes
 from app.config import settings
 
@@ -32,7 +51,9 @@ app.add_middleware(
 )
 
 app.include_router(index_routes.router)
+app.include_router(library_routes.router)
 app.include_router(search_routes.router)
+app.include_router(logs_routes.router)
 
 @app.get("/media")
 def serve_media(path: str):

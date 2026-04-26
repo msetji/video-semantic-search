@@ -34,6 +34,9 @@ class IndexStatusResponse(BaseModel):
     last_result: IndexResponse | None = None
     started_at: float | None = None
     finished_at: float | None = None
+    current_file: str | None = None
+    total_files: int = 0
+    files_done: int = 0
 
 
 class SearchRequest(BaseModel):
@@ -54,6 +57,38 @@ class SearchResponse(BaseModel):
     results: list[SearchHit]
 
 
+class LibraryFile(BaseModel):
+    name: str
+    path: str
+    kind: str
+    frame_count: int
+    duration_sec: float | None
+
+
+class LibraryDirectory(BaseModel):
+    name: str
+    path: str
+    file_count: int
+    embedding_count: int
+    files: list[LibraryFile]
+
+
+class LibraryResponse(BaseModel):
+    total_files: int
+    total_embeddings: int
+    directories: list[LibraryDirectory]
+
+
+class LibraryRemoveRequest(BaseModel):
+    paths: list[str] = Field(default_factory=list, description="Exact file paths to remove")
+    directories: list[str] = Field(default_factory=list, description="Directory paths; removes all files under them")
+
+
+class LibraryRemoveResponse(BaseModel):
+    removed_embeddings: int
+    remaining_embeddings: int
+
+
 def snapshot_to_status(data: dict[str, Any]) -> IndexStatusResponse:
     lr = data.get("last_result")
     last: IndexResponse | None = None
@@ -72,4 +107,7 @@ def snapshot_to_status(data: dict[str, Any]) -> IndexStatusResponse:
         last_result=last,
         started_at=data.get("started_at"),
         finished_at=data.get("finished_at"),
+        current_file=data.get("current_file"),
+        total_files=int(data.get("total_files") or 0),
+        files_done=int(data.get("files_done") or 0),
     )

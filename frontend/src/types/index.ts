@@ -52,3 +52,10 @@ export type IndexStatus = {
   finished_at: number | null
   last_result: IndexLastResult | null
 }
+
+export type LogEntry = {
+  ts: number
+  level: string
+  logger: string
+  msg: string
+}

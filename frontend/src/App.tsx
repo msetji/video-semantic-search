@@ -4,6 +4,7 @@ import { MediaPreview } from './components/MediaPreview'
 import { absoluteUrlForMediaPreview } from './utils/mediaPaths'
 import { About } from './components/About'
 import { Library } from './components/Library'
+import { Logs } from './components/Logs'
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? ''
 
@@ -15,7 +16,7 @@ function App() {
 
   const [indexRootPath, setIndexRootPath] = useState('')
   const [indexStatus, setIndexStatus] = useState<IndexStatus | null>(null)
-  const [page, setPage] = useState<'search' | 'library' | 'about'>('search')
+  const [page, setPage] = useState<'search' | 'library' | 'logs' | 'about'>('search')
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
 
@@ -134,6 +135,12 @@ function App() {
                 className={`pb-0.5 border-b-2 transition-colors ${page === 'library' ? 'border-violet-500 text-white' : 'border-transparent text-zinc-500 hover:text-zinc-300'}`}
               >
                 Library
+              </button>
+              <button
+                onClick={() => setPage('logs')}
+                className={`pb-0.5 border-b-2 transition-colors ${page === 'logs' ? 'border-violet-500 text-white' : 'border-transparent text-zinc-500 hover:text-zinc-300'}`}
+              >
+                Logs
               </button>
               <button
                 onClick={() => setPage('about')}
@@ -302,6 +309,7 @@ function App() {
         </>
       )}
       {page === 'library' && <Library />}
+      {page === 'logs' && <Logs />}
       {page === 'about' && <About />}
     </div>
   )

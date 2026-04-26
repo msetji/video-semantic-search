@@ -1,4 +1,5 @@
 import logging
+import time
 
 from fastapi import APIRouter, HTTPException
 
@@ -16,18 +17,18 @@ router = APIRouter(tags=["search"])
 
 @router.post("/search", response_model=SearchResponse)
 def search(body: SearchRequest) -> SearchResponse:
+    logger.info("Search request: query=%r top_k=%d", body.query, body.top_k)
+    t0 = time.perf_counter()
     try:
         clip = get_clip_service()
         store = get_faiss_store()
         qvec = clip.encode_text([body.query])[0]
         raw = store.search(qvec, body.top_k)
     except CorruptIndexError as e:
-        raise HTTPException(
-            status_code=503,
-            detail=str(e),
-        ) from e
+        logger.error("Search aborted — corrupt index: %s", e)
+        raise HTTPException(status_code=503, detail=str(e)) from e
     except Exception as e:  # noqa: BLE001
-        logger.exception("Search failed")
+        logger.exception("Search failed for query=%r", body.query)
         raise HTTPException(status_code=500, detail=str(e)) from e
 
     hits: list[SearchHit] = []
@@ -42,6 +43,15 @@ def search(body: SearchRequest) -> SearchResponse:
                 media_url=encoded_static_url_path_for_media_relative_path(rel),
             )
         )
+
+    elapsed_ms = (time.perf_counter() - t0) * 1000
+    logger.info(
+        "Search complete: query=%r → %d results in %.1f ms (top score=%.3f)",
+        body.query,
+        len(hits),
+        elapsed_ms,
+        hits[0].score if hits else 0.0,
+    )
     return SearchResponse(query=body.query, results=hits)
 
 

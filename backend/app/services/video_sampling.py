@@ -40,16 +40,19 @@ def iter_frames_one_fps(
     emitted = 0
     try:
         while True:
-            ok, frame = cap.read()
-            if not ok:
-                break
             if idx % frame_interval == 0:
+                ok, frame = cap.read()
+                if not ok:
+                    break
                 rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                 pil = Image.fromarray(rgb)
                 time_sec = idx / fps
                 yield time_sec, pil
                 emitted += 1
                 if max_frames is not None and emitted >= max_frames:
+                    break
+            else:
+                if not cap.grab():
                     break
             idx += 1
     finally:

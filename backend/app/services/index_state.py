@@ -12,10 +12,13 @@ _error: str | None = None
 _embedding_count: int = 0
 _started_at: float | None = None
 _finished_at: float | None = None
+_current_file: str | None = None
+_total_files: int = 0
+_files_done: int = 0
 
 
 def reset_for_tests() -> None:
-    global _status, _detail, _last_result, _error, _embedding_count, _started_at, _finished_at
+    global _status, _detail, _last_result, _error, _embedding_count, _started_at, _finished_at, _current_file, _total_files, _files_done
     with _lock:
         _status = "idle"
         _detail = None
@@ -24,6 +27,9 @@ def reset_for_tests() -> None:
         _embedding_count = 0
         _started_at = None
         _finished_at = None
+        _current_file = None
+        _total_files = 0
+        _files_done = 0
 
 
 def is_running() -> bool:
@@ -32,7 +38,7 @@ def is_running() -> bool:
 
 
 def start() -> None:
-    global _status, _detail, _error, _last_result, _embedding_count, _started_at, _finished_at
+    global _status, _detail, _error, _last_result, _embedding_count, _started_at, _finished_at, _current_file, _total_files, _files_done
     with _lock:
         _status = "running"
         _detail = "indexing"
@@ -41,12 +47,23 @@ def start() -> None:
         _embedding_count = 0
         _started_at = time.time()
         _finished_at = None
+        _current_file = None
+        _total_files = 0
+        _files_done = 0
 
 
 def set_embedding_count(n: int) -> None:
     global _embedding_count
     with _lock:
         _embedding_count = n
+
+
+def set_file_progress(current_file: str, files_done: int, total_files: int) -> None:
+    global _current_file, _files_done, _total_files
+    with _lock:
+        _current_file = current_file
+        _files_done = files_done
+        _total_files = total_files
 
 
 def complete(result: dict[str, Any]) -> None:
@@ -77,4 +94,7 @@ def snapshot() -> dict[str, Any]:
             "last_result": _last_result,
             "started_at": _started_at,
             "finished_at": _finished_at,
+            "current_file": _current_file,
+            "total_files": _total_files,
+            "files_done": _files_done,
         }

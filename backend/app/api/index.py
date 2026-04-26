@@ -23,6 +23,7 @@ def _rebuild_index_and_mark_state_completed(root_path: str | None) -> dict:
     stats = rebuild_index(
         root_path,
         progress_callback=index_state.set_embedding_count,
+        file_progress_callback=index_state.set_file_progress,
     )
     index_state.complete(stats)
     return stats

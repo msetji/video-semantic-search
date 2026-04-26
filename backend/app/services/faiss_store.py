@@ -150,6 +150,33 @@ class FaissStore:
         index.add(vectors.astype(np.float32))
         self._cpu_index = index
 
+    def remove_paths(self, file_paths: set[str], directory_paths: set[str]) -> int:
+        """Remove embeddings matching file_paths exactly or under any directory_paths prefix."""
+        def should_remove(path: str) -> bool:
+            if path in file_paths:
+                return True
+            for d in directory_paths:
+                if path.startswith(d + "/") or path == d:
+                    return True
+            return False
+
+        keep_indices = [i for i, m in enumerate(self.metadata) if not should_remove(m["path"])]
+        removed = len(self.metadata) - len(keep_indices)
+        if removed == 0:
+            return 0
+
+        if not keep_indices:
+            self.metadata = []
+            self._cpu_index = faiss.IndexFlatIP(self.dim)
+            self._gpu_index = None
+            self._gpu_res = None
+            return removed
+
+        all_vectors = faiss.vector_to_array(self._cpu_index).reshape(self._cpu_index.ntotal, self.dim)
+        kept_vectors = all_vectors[keep_indices]
+        self.replace(kept_vectors, [self.metadata[i] for i in keep_indices])
+        return removed
+
     def search(self, query: np.ndarray, top_k: int) -> list[tuple[dict[str, Any], float]]:
         if self.is_corrupt:
             raise CorruptIndexError("Index metadata is inconsistent; run POST /index again")
