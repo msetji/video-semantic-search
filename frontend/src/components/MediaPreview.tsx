@@ -4,6 +4,7 @@ import {
 } from '../utils/mediaPaths'
 import type { SearchHit } from '../types'
 
+//displays the preview element depending on whether the result is a video frame or image
 export function MediaPreview({
   hit,
   src,
@@ -11,6 +12,8 @@ export function MediaPreview({
   hit: SearchHit
   src: string
 }) {
+
+  // for videos, find the right timestamp where the match is found
   if (previewUsesVideoElement(hit)) {
     return (
       <video
@@ -27,6 +30,8 @@ export function MediaPreview({
       />
     )
   }
+
+  //for images, just show the image preview
   if (isRasterImageFilePath(hit.path)) {
     return (
       <img src={src} alt="" className="h-full w-full object-cover" loading="lazy" />
@@ -34,7 +39,7 @@ export function MediaPreview({
   }
   return (
     <div className="flex h-full w-full items-center justify-center bg-zinc-900 text-sm text-zinc-500">
-      Unsupported preview
+      Preview not available
     </div>
   )
 }
