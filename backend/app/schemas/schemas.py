@@ -52,6 +52,18 @@ class SearchHit(BaseModel):
 class SearchResponse(BaseModel):
     query: str
     results: list[SearchHit]
+    clip_encode_sec: float = Field(
+        ...,
+        description="Wall time for CLIP text encoding (single query vector).",
+    )
+    faiss_search_sec: float = Field(
+        ...,
+        description="Wall time for FAISS inner-product search over the index.",
+    )
+    total_sec: float = Field(
+        ...,
+        description="clip_encode_sec + faiss_search_sec (server-side search only).",
+    )
 
 
 def snapshot_to_status(data: dict[str, Any]) -> IndexStatusResponse:
