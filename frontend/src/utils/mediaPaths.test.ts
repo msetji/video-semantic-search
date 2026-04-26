@@ -1,3 +1,5 @@
+//unit tests for the mediaPaths utility function to make sure file type detection and URL construction work
+
 import { describe, expect, it } from 'vitest'
 
 import {
@@ -19,6 +21,8 @@ describe('isRasterImageFilePath', () => {
 })
 
 describe('isMp4VideoFilePath', () => {
+
+   //case-insensitive
   it('matches mp4 case-insensitively', () => {
     expect(isMp4VideoFilePath('clip.MP4')).toBe(true)
     expect(isMp4VideoFilePath('x.mov')).toBe(false)
@@ -40,12 +44,15 @@ describe('previewUsesVideoElement', () => {
 })
 
 describe('absoluteUrlForMediaPreview', () => {
+
+  //relative URLs get the API base
   it('prefixes relative media URLs with API base', () => {
     expect(
       absoluteUrlForMediaPreview('http://127.0.0.1:8000', '/media/x.jpg'),
     ).toBe('http://127.0.0.1:8000/media/x.jpg')
   })
 
+  //absolute URLs should pass through without being altered
   it('returns absolute URLs unchanged', () => {
     expect(
       absoluteUrlForMediaPreview('http://127.0.0.1:8000', 'https://cdn/x.jpg'),
