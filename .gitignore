@@ -20,12 +20,19 @@ node_modules/
 frontend/dist/
 *.local
 
-# IDE
+# IDE / local tool config
 .idea/
 .vscode/
 *.swp
 *.swo
 .cursor/
+.claude/
+
+# Secrets and machine-local env (commit *.example only)
+.env
+.env.local
+backend/.env
+frontend/.env
 
 # Data & indexes (keep data/.gitkeep)
 data/*

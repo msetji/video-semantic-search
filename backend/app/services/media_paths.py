@@ -20,12 +20,15 @@ def resolve_scan_root_under_media_directory(
     resolved_media_root = media_root.resolve()
     if user_provided_relative_path is None or not user_provided_relative_path.strip():
         return resolved_media_root
-    
+
     p = Path(user_provided_relative_path)
     if p.is_absolute():
         return p.resolve()
-        
-    return (resolved_media_root / p).resolve()
+
+    resolved = (resolved_media_root / p).resolve()
+    if not is_same_or_inside_directory(str(resolved), str(resolved_media_root)):
+        raise ValueError("path escapes media root")
+    return resolved
 
 
 def encoded_static_url_path_for_media_relative_path(absolute_posix_path: str) -> str:
