@@ -22,8 +22,22 @@ def search(body: SearchRequest) -> SearchResponse:
     try:
         clip = get_clip_service()
         store = get_faiss_store()
+        t0 = time.perf_counter()
         qvec = clip.encode_text([body.query])[0]
+        t1 = time.perf_counter()
         raw = store.search(qvec, body.top_k)
+        t2 = time.perf_counter()
+        clip_encode_sec = t1 - t0
+        faiss_search_sec = t2 - t1
+        total_sec = clip_encode_sec + faiss_search_sec
+        logger.info(
+            "search_timing clip_encode_sec=%.6f faiss_search_sec=%.6f total_sec=%.6f top_k=%d query_preview=%r",
+            clip_encode_sec,
+            faiss_search_sec,
+            total_sec,
+            body.top_k,
+            (body.query[:120] + "…") if len(body.query) > 120 else body.query,
+        )
     except CorruptIndexError as e:
         logger.error("Search aborted — corrupt index: %s", e)
         raise HTTPException(status_code=503, detail=str(e)) from e
@@ -43,16 +57,13 @@ def search(body: SearchRequest) -> SearchResponse:
                 media_url=encoded_static_url_path_for_media_relative_path(rel),
             )
         )
-
-    elapsed_ms = (time.perf_counter() - t0) * 1000
-    logger.info(
-        "Search complete: query=%r → %d results in %.1f ms (top score=%.3f)",
-        body.query,
-        len(hits),
-        elapsed_ms,
-        hits[0].score if hits else 0.0,
+    return SearchResponse(
+        query=body.query,
+        results=hits,
+        clip_encode_sec=clip_encode_sec,
+        faiss_search_sec=faiss_search_sec,
+        total_sec=total_sec,
     )
-    return SearchResponse(query=body.query, results=hits)
 
 
 @router.get("/health")

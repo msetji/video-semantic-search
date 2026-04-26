@@ -15,11 +15,13 @@ function App() {
   const [error, setError] = useState<string | null>(null)
 
   const [indexRootPath, setIndexRootPath] = useState('')
-  const [indexStatus, setIndexStatus] = useState<IndexStatus | null>(null)
-  const [cancelling, setCancelling] = useState(false)
-  const [topK, setTopK] = useState(12)
-  const [page, setPage] = useState<'search' | 'library' | 'logs' | 'about'>('search')
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const [indexStatus, setIndexStatus] = useState<string | null>(null)
+  const [page, setPage] = useState<'search' | 'about'>('search')
+  const [searchTimingsMs, setSearchTimingsMs] = useState<{
+    clip: number
+    faiss: number
+    total: number
+  } | null>(null)
 
 
   const mediaBase = useMemo(() => API_BASE.replace(/\/$/, ''), [])
@@ -68,6 +70,7 @@ function App() {
     if (!query.trim()) return
     setLoading(true)
     setError(null)
+    setSearchTimingsMs(null)
     try {
       const res = await fetch(`${API_BASE}/search`, {
         method: 'POST',
@@ -80,6 +83,11 @@ function App() {
       }
       const data: SearchResponse = await res.json()
       setResults(data.results)
+      setSearchTimingsMs({
+        clip: data.clip_encode_sec * 1000,
+        faiss: data.faiss_search_sec * 1000,
+        total: data.total_sec * 1000,
+      })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Search failed')
       setResults([])
@@ -306,6 +314,13 @@ function App() {
               >
                 {error}
               </div>
+            )}
+
+            {searchTimingsMs && (
+              <p className="mb-4 text-xs text-zinc-500">
+                Server timing: CLIP encode {searchTimingsMs.clip.toFixed(1)} ms · FAISS{' '}
+                {searchTimingsMs.faiss.toFixed(1)} ms · total {searchTimingsMs.total.toFixed(1)} ms
+              </p>
             )}
 
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
