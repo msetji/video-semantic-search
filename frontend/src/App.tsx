@@ -3,10 +3,37 @@ import type { IndexStatus, SearchHit, SearchResponse } from './types'
 import { MediaPreview } from './components/MediaPreview'
 import { absoluteUrlForMediaPreview } from './utils/mediaPaths'
 import { About } from './components/About'
+import { Benchmarks } from './components/Benchmarks'
 import { Library } from './components/Library'
 import { Logs } from './components/Logs'
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? ''
+
+function formatElapsedSeconds(totalSec: number): string {
+  if (!Number.isFinite(totalSec) || totalSec < 0) return '0:00'
+  const sec = Math.floor(totalSec % 60)
+  const min = Math.floor(totalSec / 60) % 60
+  const hr = Math.floor(totalSec / 3600)
+  if (hr > 0) return `${hr}:${String(min).padStart(2, '0')}:${String(sec).padStart(2, '0')}`
+  return `${min}:${String(sec).padStart(2, '0')}`
+}
+
+/** Raw CLIP cosine; typical good text–image hits are ~0.22–0.40. */
+const MATCH_STRONG_MIN = 0.22
+const MATCH_WEAK_MAX = 0.18
+
+function clipMatchLabel(score: number): { text: string; className: string } {
+  if (!Number.isFinite(score)) {
+    return { text: 'Match', className: 'text-zinc-500' }
+  }
+  if (score >= MATCH_STRONG_MIN) {
+    return { text: 'Strong Match', className: 'text-emerald-400' }
+  }
+  if (score < MATCH_WEAK_MAX) {
+    return { text: 'Weak Match', className: 'text-amber-400/90' }
+  }
+  return { text: 'Match', className: 'text-zinc-400' }
+}
 
 function App() {
   const [query, setQuery] = useState('')
@@ -15,14 +42,22 @@ function App() {
   const [error, setError] = useState<string | null>(null)
 
   const [indexRootPath, setIndexRootPath] = useState('')
+  const [replaceEntireIndex, setReplaceEntireIndex] = useState(false)
   const [indexStatus, setIndexStatus] = useState<IndexStatus | null>(null)
   const [cancelling, setCancelling] = useState(false)
   const [topK, setTopK] = useState(12)
-  const [page, setPage] = useState<'search' | 'library' | 'logs' | 'about'>('search')
+  const [mediaFilter, setMediaFilter] = useState<'both' | 'images' | 'videos'>('both')
+  const [page, setPage] = useState<'search' | 'library' | 'benchmarks' | 'logs' | 'about'>('search')
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
-
+  const [, setElapsedTick] = useState(0)
 
   const mediaBase = useMemo(() => API_BASE.replace(/\/$/, ''), [])
+
+  useEffect(() => {
+    if (indexStatus?.status !== 'running') return
+    const id = setInterval(() => setElapsedTick((n) => n + 1), 1000)
+    return () => clearInterval(id)
+  }, [indexStatus?.status])
 
   async function fetchIndexStatus(): Promise<IndexStatus | null> {
     try {
@@ -72,7 +107,11 @@ function App() {
       const res = await fetch(`${API_BASE}/search`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query: query.trim(), top_k: topK }),
+        body: JSON.stringify({
+          query: query.trim(),
+          top_k: topK,
+          media_filter: mediaFilter,
+        }),
       })
       if (!res.ok) {
         const text = await res.text()
@@ -108,7 +147,11 @@ function App() {
       const res = await fetch(`${API_BASE}/index`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ root_path: indexRootPath || null, run_in_background: true }),
+        body: JSON.stringify({
+          root_path: indexRootPath || null,
+          run_in_background: true,
+          replace_entire_index: replaceEntireIndex,
+        }),
       })
       if (res.ok) {
         const status = await fetchIndexStatus()
@@ -149,6 +192,12 @@ function App() {
                 Library
               </button>
               <button
+                onClick={() => setPage('benchmarks')}
+                className={`pb-0.5 border-b-2 transition-colors ${page === 'benchmarks' ? 'border-violet-500 text-white' : 'border-transparent text-zinc-500 hover:text-zinc-300'}`}
+              >
+                Benchmarks
+              </button>
+              <button
                 onClick={() => setPage('logs')}
                 className={`pb-0.5 border-b-2 transition-colors ${page === 'logs' ? 'border-violet-500 text-white' : 'border-transparent text-zinc-500 hover:text-zinc-300'}`}
               >
@@ -166,7 +215,7 @@ function App() {
           {page === 'search' && (
             <form
               onSubmit={handleSearchFormSubmit}
-              className="flex w-full max-w-xl flex-col gap-2 sm:flex-row sm:items-center"
+              className="flex w-full max-w-3xl flex-col flex-wrap gap-2 sm:flex-row sm:items-center"
             >
               <input
                 type="search"
@@ -185,6 +234,16 @@ function App() {
                 {[6, 12, 24, 48].map(n => (
                   <option key={n} value={n}>{n} results</option>
                 ))}
+              </select>
+              <select
+                value={mediaFilter}
+                onChange={(e) => setMediaFilter(e.target.value as 'both' | 'images' | 'videos')}
+                className="rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-2 text-sm text-zinc-300 focus:border-violet-500 focus:outline-none"
+                aria-label="Media types to search"
+              >
+                <option value="both">Images & videos</option>
+                <option value="images">Images only</option>
+                <option value="videos">Videos only</option>
               </select>
               <button
                 type="submit"
@@ -220,7 +279,16 @@ function App() {
                     Choose Directory
                   </button>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-col items-end gap-2 sm:flex-row sm:items-center">
+                  <label className="flex cursor-pointer items-center gap-2 text-xs text-zinc-400">
+                    <input
+                      type="checkbox"
+                      checked={replaceEntireIndex}
+                      onChange={(e) => setReplaceEntireIndex(e.target.checked)}
+                      className="rounded border-zinc-600 bg-zinc-950 text-violet-500 focus:ring-violet-500"
+                    />
+                    Replace entire index
+                  </label>
                   <button
                     onClick={handleStartIndex}
                     disabled={indexStatus?.status === 'running'}
@@ -257,7 +325,19 @@ function App() {
                       {indexStatus.status === 'failed' && 'Failed'}
                       {indexStatus.status === 'cancelled' && 'Cancelled'}
                     </span>
-                    <span className="text-zinc-500">
+                    <span className="text-zinc-500 tabular-nums">
+                      {indexStatus.started_at != null && (
+                        <>
+                          <span className="text-zinc-400">
+                            {indexStatus.status === 'running'
+                              ? `Elapsed ${formatElapsedSeconds(Date.now() / 1000 - indexStatus.started_at)}`
+                              : indexStatus.finished_at != null
+                                ? `Time ${formatElapsedSeconds(indexStatus.finished_at - indexStatus.started_at)}`
+                                : null}
+                          </span>
+                          {(indexStatus.total_files > 0 || indexStatus.status === 'running' || indexStatus.embeddings_written > 0) && ' · '}
+                        </>
+                      )}
                       {indexStatus.total_files > 0
                         ? `${indexStatus.files_done} / ${indexStatus.total_files} files`
                         : indexStatus.status === 'running' ? 'Scanning…' : ''}
@@ -311,6 +391,7 @@ function App() {
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {results.map((hit) => {
                 const src = absoluteUrlForMediaPreview(mediaBase, hit.media_url)
+                const match = clipMatchLabel(hit.score)
                 return (
                   <article
                     key={`${hit.path}-${hit.time_sec ?? 'img'}-${hit.score}`}
@@ -327,7 +408,21 @@ function App() {
                         <span className="rounded bg-zinc-800 px-2 py-0.5 capitalize">
                           {hit.kind}
                         </span>
-                        <span>score {(hit.score * 100).toFixed(1)}%</span>
+                        <div
+                          className="flex flex-wrap items-baseline justify-end gap-x-1.5 gap-y-0.5 text-right"
+                          title={
+                            'Score is CLIP cosine similarity × 100. ' +
+                            `Strong ≥${(MATCH_STRONG_MIN * 100).toFixed(0)}%, weak <${(MATCH_WEAK_MAX * 100).toFixed(0)}% (cosine). Raw: ${hit.score.toFixed(3)}. ` +
+                            'High rankings can still feel accurate even in the 20–40% range.'
+                          }
+                        >
+                          <span className="tabular-nums text-zinc-200">
+                            {(hit.score * 100).toFixed(1)}%
+                          </span>
+                          <span className={`text-[11px] font-medium ${match.className}`}>
+                            {match.text}
+                          </span>
+                        </div>
                       </div>
                     </div>
                   </article>
@@ -344,6 +439,7 @@ function App() {
         </>
       )}
       {page === 'library' && <Library />}
+      {page === 'benchmarks' && <Benchmarks />}
       {page === 'logs' && <Logs />}
       {page === 'about' && <About />}
     </div>

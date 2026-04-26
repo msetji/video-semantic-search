@@ -9,6 +9,10 @@ import faiss
 import numpy as np
 
 from app.exceptions import CorruptIndexError
+from app.services.media_paths import (
+    is_same_or_inside_directory,
+    metadata_path_key_for_removal_matching,
+)
 from app.services.metadata_store import (
     migrate_json_to_sqlite,
     read_rows,
@@ -17,6 +21,18 @@ from app.services.metadata_store import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _index_flat_ip_vectors_numpy(cpu_index: faiss.Index) -> np.ndarray:
+    """All vectors in a CPU IndexFlatIP / IndexFlat as shape (ntotal, d) float32."""
+    n = cpu_index.ntotal
+    d = int(cpu_index.d)
+    if n == 0:
+        return np.zeros((0, d), dtype=np.float32)
+    xb = getattr(cpu_index, "xb", None)
+    if xb is not None:
+        return faiss.vector_to_array(xb).reshape(n, d).astype(np.float32)
+    return np.array([cpu_index.reconstruct(int(i)) for i in range(n)], dtype=np.float32)
 
 
 class FaissStore:
@@ -38,6 +54,7 @@ class FaissStore:
         self._gpu_res: faiss.StandardGpuResources | None = None
         self.metadata: list[dict[str, Any]] = []
         self.is_corrupt: bool = False
+        self._indexed_path_norms_cache: set[str] | None = None
 
     def load(self) -> bool:
         self.is_corrupt = False
@@ -87,6 +104,7 @@ class FaissStore:
 
         self._cpu_index = cpu
         self.metadata = rows
+        self._indexed_path_norms_cache = None
         return True
 
     def _ensure_search_index(self) -> faiss.Index:
@@ -135,6 +153,7 @@ class FaissStore:
         if vectors.shape[0] != len(metadata):
             raise ValueError("vectors and metadata length mismatch")
         self.is_corrupt = False
+        self._indexed_path_norms_cache = None
         if vectors.size == 0:
             self.metadata = []
             self._cpu_index = faiss.IndexFlatIP(self.dim)
@@ -150,13 +169,70 @@ class FaissStore:
         index.add(vectors.astype(np.float32))
         self._cpu_index = index
 
-    def remove_paths(self, file_paths: set[str], directory_paths: set[str]) -> int:
-        """Remove embeddings matching file_paths exactly or under any directory_paths prefix."""
+    def _unique_indexed_media_path_norms(self, media_root: Path) -> set[str]:
+        if self._indexed_path_norms_cache is not None:
+            return self._indexed_path_norms_cache
+        mr = media_root.resolve()
+        norms: set[str] = set()
+        seen_raw: set[str] = set()
+        for m in self.metadata:
+            p = m.get("path")
+            if not isinstance(p, str) or not p.strip():
+                continue
+            raw = p.strip()
+            if raw in seen_raw:
+                continue
+            seen_raw.add(raw)
+            if Path(raw).is_absolute():
+                logical = os.path.normpath(raw)
+            else:
+                logical = os.path.normpath(str(mr / raw))
+            norms.add(os.path.normcase(logical))
+        self._indexed_path_norms_cache = norms
+        return norms
+
+    def _active_cpu_index(self) -> faiss.Index:
+        if self._gpu_index is not None and faiss.get_num_gpus() > 0:
+            return faiss.index_gpu_to_cpu(self._gpu_index)  # type: ignore[no-any-return]
+        if self._cpu_index is None:
+            raise RuntimeError("Index not built")
+        return self._cpu_index
+
+    def snapshot_vectors(self) -> np.ndarray:
+        """All embedding rows as a CPU float32 array (handles GPU-backed index)."""
+        cpu = self._active_cpu_index()
+        return _index_flat_ip_vectors_numpy(cpu)
+
+    def media_path_is_allowed(self, logical_norm: str, media_root: Path) -> bool:
+        """Allow paths under media_root, or absolute paths that appear in the index."""
+        root_norm = os.path.normpath(str(media_root.resolve()))
+        if is_same_or_inside_directory(logical_norm, root_norm):
+            return True
+        if self.is_corrupt or not self.metadata:
+            return False
+        key = os.path.normcase(os.path.normpath(logical_norm))
+        return key in self._unique_indexed_media_path_norms(media_root)
+
+    def remove_paths(
+        self,
+        file_paths: set[str],
+        directory_paths: set[str],
+        *,
+        remove_all_non_absolute_paths: bool = False,
+    ) -> int:
+        """Remove embeddings matching file_paths, directory prefix keys, or relative-only wipe."""
+        file_keys = {metadata_path_key_for_removal_matching(p) for p in file_paths}
+        dir_prefix_keys = {metadata_path_key_for_removal_matching(d) for d in directory_paths}
+
         def should_remove(path: str) -> bool:
-            if path in file_paths:
+            raw = path.strip()
+            if remove_all_non_absolute_paths and not Path(raw).is_absolute():
                 return True
-            for d in directory_paths:
-                if path.startswith(d + "/") or path == d:
+            pk = metadata_path_key_for_removal_matching(raw)
+            if pk in file_keys:
+                return True
+            for d in dir_prefix_keys:
+                if pk == d or pk.startswith(d + "/"):
                     return True
             return False
 
@@ -167,12 +243,14 @@ class FaissStore:
 
         if not keep_indices:
             self.metadata = []
+            self._indexed_path_norms_cache = None
             self._cpu_index = faiss.IndexFlatIP(self.dim)
             self._gpu_index = None
             self._gpu_res = None
             return removed
 
-        all_vectors = faiss.vector_to_array(self._cpu_index).reshape(self._cpu_index.ntotal, self.dim)
+        cpu_index = self._active_cpu_index()
+        all_vectors = _index_flat_ip_vectors_numpy(cpu_index)
         kept_vectors = all_vectors[keep_indices]
         self.replace(kept_vectors, [self.metadata[i] for i in keep_indices])
         return removed
@@ -193,6 +271,11 @@ class FaissStore:
                 continue
             results.append((self.metadata[i], float(score)))
         return results
+
+    def reconstruct_vector(self, row_id: int) -> np.ndarray:
+        """Single L2-normalized embedding row (CPU path; works when search index is on GPU)."""
+        cpu = self._active_cpu_index()
+        return np.asarray(cpu.reconstruct(int(row_id)), dtype=np.float32)
 
 
 _store: FaissStore | None = None

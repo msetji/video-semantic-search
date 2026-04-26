@@ -37,6 +37,10 @@ export function About() {
                         <p className="text-zinc-400">
                             Your text query is also embedded with CLIP, then FAISS finds the closest
                             matching vectors — returning the most semantically relevant results instantly.
+                            The percentage on each hit is cosine similarity × 100 (roughly −100% to +100%).
+                            Text and image embeddings are aligned but not identical, so even very accurate
+                            hits usually sit around <span className="text-zinc-300">20–45%</span>, not 99%:
+                            nothing is wrong — CLIP rarely produces near-1.0 text–image cosine scores.
                         </p>
                     </div>
                 </div>

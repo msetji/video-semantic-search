@@ -20,20 +20,27 @@ logger = logging.getLogger(__name__)
 router = APIRouter(tags=["index"])
 
 
-def _rebuild_index_and_mark_state_completed(root_path: str | None) -> dict:
+def _rebuild_index_and_mark_state_completed(
+    root_path: str | None,
+    replace_entire_index: bool,
+) -> dict:
     stats = rebuild_index(
         root_path,
         progress_callback=index_state.set_embedding_count,
         file_progress_callback=index_state.set_file_progress,
+        replace_entire_index=replace_entire_index,
     )
     index_state.complete(stats)
     return stats
 
 
-def run_scheduled_background_index_job(root_path: str | None) -> None:
+def run_scheduled_background_index_job(
+    root_path: str | None,
+    replace_entire_index: bool,
+) -> None:
     with INDEXING_LOCK:
         try:
-            _rebuild_index_and_mark_state_completed(root_path)
+            _rebuild_index_and_mark_state_completed(root_path, replace_entire_index)
         except IndexCancelledError:
             logger.info("Background indexing was cancelled by user.")
             index_state.mark_cancelled()
@@ -52,7 +59,11 @@ def run_index(body: IndexRequest, background_tasks: BackgroundTasks):
                     detail="Indexing already in progress; use GET /index/status or wait.",
                 )
             index_state.start()
-        background_tasks.add_task(run_scheduled_background_index_job, body.root_path)
+        background_tasks.add_task(
+            run_scheduled_background_index_job,
+            body.root_path,
+            body.replace_entire_index,
+        )
         return JSONResponse(
             status_code=202,
             content=IndexAccepted().model_dump(),
@@ -65,7 +76,10 @@ def run_index(body: IndexRequest, background_tasks: BackgroundTasks):
             )
         index_state.start()
         try:
-            stats = _rebuild_index_and_mark_state_completed(body.root_path)
+            stats = _rebuild_index_and_mark_state_completed(
+                body.root_path,
+                body.replace_entire_index,
+            )
             return IndexResponse(**stats)
         except ValueError as e:
             index_state.fail(str(e))

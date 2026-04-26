@@ -145,6 +145,13 @@ def _iter_pyav_nvdec(
                 if max_frames is not None and emitted >= max_frames:
                     return
 
+        # Some short clips can expose no usable keyframes through this fast path.
+        # Signal caller to use OpenCV stride sampling instead of silently returning 0 frames.
+        if emitted == 0:
+            raise RuntimeError(
+                f"NVDEC keyframe path emitted 0 frames for {video_path.name}; fallback required"
+            )
+
     finally:
         container.close()
         logger.info(

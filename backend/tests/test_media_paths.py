@@ -6,6 +6,7 @@ from app.services.media_paths import (
     encoded_static_url_path_for_media_relative_path,
     resolve_scan_root_under_media_directory,
 )
+from app.services.media_scan import relative_under_media
 
 
 def test_resolve_scan_root_returns_media_root_when_path_is_empty(tmp_path: Path) -> None:
@@ -48,6 +49,15 @@ def test_resolve_scan_root_rejects_absolute_path_style_escape(tmp_path: Path) ->
     outside.mkdir()
     with pytest.raises(ValueError, match="path escapes media root"):
         resolve_scan_root_under_media_directory(media_root, "../outside")
+
+
+def test_relative_under_media_returns_posix_path_under_root(tmp_path: Path) -> None:
+    media_root = tmp_path / "data"
+    media_root.mkdir()
+    f = media_root / "clips" / "a.mp4"
+    f.parent.mkdir(parents=True)
+    f.touch()
+    assert relative_under_media(f, media_root) == "clips/a.mp4"
 
 
 def test_encoded_static_url_percent_encodes_path_segments() -> None:

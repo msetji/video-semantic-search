@@ -19,7 +19,10 @@ from app.exceptions import IndexCancelledError
 from app.services import index_state
 from app.services.clip_service import get_clip_service
 from app.services.faiss_store import get_faiss_store
-from app.services.media_paths import resolve_scan_root_under_media_directory
+from app.services.media_paths import (
+    index_merge_removal_spec,
+    resolve_scan_root_under_media_directory,
+)
 from app.services.media_scan import relative_under_media, scan_media
 from app.services.video_sampling import iter_frames_one_fps
 
@@ -100,6 +103,8 @@ def rebuild_index(
     root_relative: str | None = None,
     progress_callback: Callable[[int], None] | None = None,
     file_progress_callback: Callable[[str, int, int], None] | None = None,
+    *,
+    replace_entire_index: bool = False,
 ) -> dict:
     root = resolve_scan_root_under_media_directory(settings.media_root, root_relative)
     media_root = settings.media_root.resolve()
@@ -210,7 +215,9 @@ def rebuild_index(
             try:
                 for timestamp_sec, frame in iter_frames_one_fps(video_file_path, max_frames=max_frames):
                     frame_count += 1
-                    frame_meta = _metadata_record_for_video_frame(video_file_path, media_root, float(timestamp_sec))
+                    frame_meta = _metadata_record_for_video_frame(
+                        video_file_path, media_root, float(timestamp_sec)
+                    )
                     in_flight_videos.append((pool.submit(_preprocess_pil, frame), frame_meta))
                     drain_video_tasks(VIDEO_PREFETCH)
             except IndexCancelledError:
@@ -232,14 +239,49 @@ def rebuild_index(
         torch.cuda.empty_cache()
         logger.info("GPU VRAM cache cleared after indexing.")
 
-    if not vectors:
-        dim = clip.embedding_dim
-        store.replace(np.zeros((0, dim), dtype=np.float32), [])
-        logger.warning("No media found under %s — index cleared.", root)
-    else:
+    dim = clip.embedding_dim
+
+    if not replace_entire_index and not store.is_corrupt:
+        spec = index_merge_removal_spec(root, media_root)
+        store.remove_paths(
+            set(spec.file_paths),
+            set(spec.directory_prefix_keys),
+            remove_all_non_absolute_paths=spec.remove_all_non_absolute_paths,
+        )
+
+    if vectors:
         all_vec = np.vstack(vectors).astype(np.float32)
-        store.replace(all_vec, meta)
-        logger.info("Saved %d embeddings to FAISS index.", len(meta))
+        if replace_entire_index or store.is_corrupt:
+            store.replace(all_vec, meta)
+            logger.info("Saved %d embeddings to FAISS index (full replace).", len(meta))
+        else:
+            kept = store.snapshot_vectors()
+            if kept.shape[0] > 0:
+                merged_vec = np.vstack([kept, all_vec])
+                merged_meta = list(store.metadata) + meta
+                store.replace(merged_vec, merged_meta)
+                logger.info(
+                    "Merged index: %d kept + %d new = %d embeddings.",
+                    kept.shape[0],
+                    len(meta),
+                    merged_vec.shape[0],
+                )
+            else:
+                store.replace(all_vec, meta)
+                logger.info("Saved %d embeddings to FAISS index.", len(meta))
+    else:
+        if replace_entire_index or store.is_corrupt:
+            store.replace(np.zeros((0, dim), dtype=np.float32), [])
+            logger.warning("No media found under %s — index cleared.", root)
+        else:
+            if not store.metadata:
+                store.replace(np.zeros((0, dim), dtype=np.float32), [])
+            logger.warning(
+                "No media found under %s (%d embeddings remain in index).",
+                root,
+                len(store.metadata),
+            )
+
     store.save()
 
     elapsed_s = time.perf_counter() - t_start
@@ -255,5 +297,5 @@ def rebuild_index(
         "root": str(root),
         "images_indexed": len(images),
         "videos_indexed": len(videos),
-        "embeddings": len(meta),
+        "embeddings": len(store.metadata),
     }

@@ -35,7 +35,7 @@ def main() -> None:
     from app.services.indexer import rebuild_index
 
     t0 = time.perf_counter()
-    stats = rebuild_index(args.root)
+    stats = rebuild_index(args.root, replace_entire_index=True)
     elapsed = time.perf_counter() - t0
     emb = stats["embeddings"]
     rate = emb / elapsed if elapsed > 0 else 0.0

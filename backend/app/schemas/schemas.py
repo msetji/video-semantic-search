@@ -12,13 +12,20 @@ class IndexRequest(BaseModel):
         default=False,
         description="If true, return 202 immediately and run indexing in a background task (poll GET /index/status).",
     )
+    replace_entire_index: bool = Field(
+        default=False,
+        description=(
+            "If true, discard the existing index and replace it with only this run. "
+            "If false (default), keep embeddings from other folders and only refresh paths under this scan root."
+        ),
+    )
 
 
 class IndexResponse(BaseModel):
     root: str
     images_indexed: int
     videos_indexed: int
-    embeddings: int
+    embeddings: int  # total embeddings in the index after this run
 
 
 class IndexAccepted(BaseModel):
@@ -42,6 +49,10 @@ class IndexStatusResponse(BaseModel):
 class SearchRequest(BaseModel):
     query: str = Field(..., min_length=1)
     top_k: int = Field(default=10, ge=1, le=100)
+    media_filter: Literal["both", "images", "videos"] = Field(
+        default="both",
+        description="Restrict hits to images, videos, or both (default).",
+    )
 
 
 class SearchHit(BaseModel):
@@ -55,6 +66,42 @@ class SearchHit(BaseModel):
 class SearchResponse(BaseModel):
     query: str
     results: list[SearchHit]
+
+
+class BenchmarkSearchRequest(BaseModel):
+    iterations: int = Field(default=40, ge=1, le=500)
+    top_k: int = Field(default=10, ge=1, le=100)
+    media_filter: Literal["both", "images", "videos"] = Field(default="both")
+    seed: int = Field(default=42, description="RNG seed for random-corpus baseline sampling")
+
+
+class BenchmarkSearchResponse(BaseModel):
+    ntotal: int
+    iterations: int
+    top_k: int
+    media_filter: str
+    latency_mean_s: float
+    latency_p50_s: float
+    latency_p95_s: float
+    qps: float
+    semantic_mean_topk: float = Field(
+        description="Mean cosine similarity of top-k hits for rotating natural-language queries.",
+    )
+    random_corpus_mean_topk: float = Field(
+        description="Mean cosine of query vs k random embeddings from the index (unrelated content).",
+    )
+    gibberish_mean_topk: float = Field(
+        description="Mean top-k similarity for nonsense text queries (CLIP still encodes a direction).",
+    )
+    random_query_unit_mean_topk: float = Field(
+        description="Mean top-k similarity when the query vector is a random unit direction.",
+    )
+    semantic_over_random_corpus: float = Field(
+        description="semantic_mean_topk / (random_corpus_mean_topk + eps); >1 means better than random corpus match.",
+    )
+    semantic_over_gibberish: float = Field(
+        description="semantic_mean_topk / (gibberish_mean_topk + eps).",
+    )
 
 
 class LibraryFile(BaseModel):
@@ -87,6 +134,53 @@ class LibraryRemoveRequest(BaseModel):
 class LibraryRemoveResponse(BaseModel):
     removed_embeddings: int
     remaining_embeddings: int
+
+
+class DemoRetrievalRequest(BaseModel):
+    top_k: int = Field(default=12, ge=1, le=100)
+    media_filter: Literal["both", "images", "videos"] = Field(
+        default="both",
+        description="Use 'both' so video test cases are eligible (matches live search).",
+    )
+
+
+class DemoRetrievalCaseOut(BaseModel):
+    label: str
+    query: str
+    path_includes: str
+    expected_in_index: bool = Field(
+        description="True if some indexed metadata path contains `path_includes` (case-insensitive).",
+    )
+    rank: int | None = Field(
+        default=None,
+        description="1-based position among a deep FAISS search; null if missing from index or past search cap.",
+    )
+    in_top_k: bool
+    best_score: float | None = None
+    latency_ms: float = Field(
+        default=0.0,
+        description="Encode + search time for this query only (ms).",
+    )
+    note: str | None = None
+
+
+class DemoRetrievalResponse(BaseModel):
+    ntotal: int
+    top_k: int
+    media_filter: str
+    spec_version: int
+    spec_description: str
+    cases: list[DemoRetrievalCaseOut]
+    pass_count: int
+    case_count: int
+    recall: float = Field(
+        description="Fraction of cases where the expected file appears in the top-k list.",
+    )
+    search_rank_depth: int = Field(
+        description="FAISS neighbor count used to compute rank (min(ntotal, cap)).",
+    )
+    count_expected_in_index: int
+    count_not_in_index: int
 
 
 def snapshot_to_status(data: dict[str, Any]) -> IndexStatusResponse:

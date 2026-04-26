@@ -1,0 +1,31 @@
+{
+  "version": 1,
+  "description": "One query per file from `python scripts/fetch_demo_dataset.py` output. Index `data/demo_corpus` (or any tree where these path substrings appear), then run demo retrieval in the Benchmarks tab.",
+  "cases": [
+    { "label": "cat", "query": "a cat resting", "path_includes": "00_cat" },
+    { "label": "dog", "query": "a yellow dog", "path_includes": "01_dog" },
+    { "label": "apple", "query": "red apple", "path_includes": "02_apple" },
+    { "label": "beach", "query": "beach and sea", "path_includes": "03_beach" },
+    { "label": "car", "query": "BMW car front view on asphalt", "path_includes": "04_car" },
+    { "label": "airplane", "query": "airplane takeoff on runway", "path_includes": "05_airplane" },
+    { "label": "city", "query": "empire state building and city skyline", "path_includes": "06_city" },
+    { "label": "flower", "query": "tulip and bee on petals", "path_includes": "07_flower" },
+    { "label": "sushi", "query": "sushi nigiri on a plate", "path_includes": "08_sushi" },
+    { "label": "football", "query": "American football game tackle", "path_includes": "09_football" },
+    { "label": "laptop", "query": "laptop keyboard close-up", "path_includes": "10_laptop" },
+    { "label": "mountain", "query": "mountain ridge path with clouds", "path_includes": "11_mountain" },
+    { "label": "bicycle", "query": "a bicycle on the street", "path_includes": "12_bicycle" },
+    {
+      "label": "video 5s",
+      "query": "short test video clip",
+      "path_includes": "sample_5s",
+      "path_includes_any": ["sample_short", "ForBiggerBlazes"]
+    },
+    {
+      "label": "video 10s",
+      "query": "ten second video sample",
+      "path_includes": "sample_10s",
+      "path_includes_any": ["short_clip", "ForBiggerEscapes"]
+    }
+  ]
+}

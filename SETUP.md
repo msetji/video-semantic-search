@@ -1,6 +1,6 @@
 # Local setup (TAs & developers)
 
-Engineering scope and limitations (flat FAISS search, full rebuilds, concurrency) are documented in [DESIGN.md](DESIGN.md).
+Engineering scope and limitations (flat FAISS search, concurrency) are documented in [DESIGN.md](DESIGN.md).
 
 ## Prerequisites
 
@@ -24,6 +24,8 @@ conda activate video-semantic-search
 
 ## 2. Media directory
 
+**Optional demo corpus (images + short MP4s and suggested text queries):** with the conda env active, from the repo root run `python scripts/fetch_demo_dataset.py`. This downloads into `data/demo_corpus/` (gitignored) and writes `demo_manifest.json` and `suggested_queries.txt` there. Point `POST /index` at the absolute path to `demo_corpus` (or choose that folder in the UI). Search still uses CLIP on pixels; the manifest is for human-readable “ground truth” and slide captions. After indexing, open the app’s **Benchmarks** tab and run **Run demo retrieval test** (or `POST /benchmarks/demo-retrieval`) to see which labeled queries retrieve the expected file within top-k. The benchmark accepts both current and earlier demo video filename variants so video rows remain valid if you generated the corpus in an older session.
+
 You **do not** need to move your photos (`.jpg`, `.jpeg`, `.png`, `.webp`) and videos (`.mp4`) to the `data/` directory!
 The Video Semantic Search app has been upgraded to support absolute native directory mapping. When the frontend is running, you can simply click the **"Choose Directory"** button and pick any folder straight off your Windows hard drive. 
 
@@ -35,7 +37,8 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
 - **Health:** `GET http://127.0.0.1:8000/health`
-- **Build / refresh index (blocking):** `POST http://127.0.0.1:8000/index` with JSON `{"root_path": "C:\\Path\\To\\Videos"}` to scan an absolute path on your disk, or leave `{"root_path": null}` to fallback to the internal `data/` folder.
+- **Build / refresh index (blocking):** `POST http://127.0.0.1:8000/index` with JSON `{"root_path": "C:\\Path\\To\\Videos"}` to scan an absolute path on your disk, or leave `{"root_path": null}` to re-scan the internal `data/` folder.
+- **Cumulative indexing (default):** Each run **merges** into the existing index: embeddings for paths under the new scan root are refreshed, and embeddings for **other** folders you indexed earlier are kept. To wipe the whole index and start over, send **`"replace_entire_index": true`** (or use the **Replace entire index** checkbox in the UI).
 - **Build index in background:** `POST` with `{"run_in_background": true}` → **202 Accepted**; poll **`GET http://127.0.0.1:8000/index/status`**. In-memory status **resets when the server restarts**. (Tip: You can start the background index directly from the frontend UI).
 - **Search:** `POST http://127.0.0.1:8000/search` with `{"query": "your text", "top_k": 10}`. Returns **503** if the on-disk index is **corrupt** (metadata/FAISS mismatch); run `POST /index` again.
 

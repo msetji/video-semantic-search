@@ -59,3 +59,54 @@ export type LogEntry = {
   logger: string
   msg: string
 }
+
+export type BenchmarkSearchResponse = {
+  ntotal: number
+  iterations: number
+  top_k: number
+  media_filter: string
+  latency_mean_s: number
+  latency_p50_s: number
+  latency_p95_s: number
+  qps: number
+  semantic_mean_topk: number
+  random_corpus_mean_topk: number
+  gibberish_mean_topk: number
+  random_query_unit_mean_topk: number
+  semantic_over_random_corpus: number
+  semantic_over_gibberish: number
+}
+
+export type DemoRetrievalCaseOut = {
+  label: string
+  query: string
+  path_includes: string
+  expected_in_index: boolean
+  rank: number | null
+  in_top_k: boolean
+  best_score: number | null
+  latency_ms: number
+  note: string | null
+}
+
+export type DemoRetrievalResponse = {
+  ntotal: number
+  top_k: number
+  media_filter: string
+  spec_version: number
+  spec_description: string
+  cases: DemoRetrievalCaseOut[]
+  pass_count: number
+  case_count: number
+  recall: number
+  search_rank_depth: number
+  count_expected_in_index: number
+  count_not_in_index: number
+}
+
+export type DemoCorpusInfo = {
+  index_root_path_for_api: string
+  media_root: string
+  demo_corpus_absolute: string
+  demo_corpus_exists: boolean
+}

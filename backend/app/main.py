@@ -21,11 +21,13 @@ logging.getLogger("uvicorn.access").addFilter(_SuppressPolling())
 
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api import benchmarks as benchmarks_routes
 from app.api import index as index_routes
 from app.api import library as library_routes
 from app.api import logs as logs_routes
 from app.api import search as search_routes
 from app.config import settings
+from app.services.faiss_store import get_faiss_store
 
 
 @asynccontextmanager
@@ -53,18 +55,29 @@ app.add_middleware(
 app.include_router(index_routes.router)
 app.include_router(library_routes.router)
 app.include_router(search_routes.router)
+app.include_router(benchmarks_routes.router)
 app.include_router(logs_routes.router)
+
 
 @app.get("/media")
 def serve_media(path: str):
     from pathlib import Path
     from fastapi.responses import FileResponse
     from fastapi import HTTPException
-    
-    p = Path(path).resolve()
-    if p.is_file():
-        return FileResponse(p)
-    raise HTTPException(status_code=404, detail="Media file not found. Have you moved it?")
+
+    media_root = settings.media_root.resolve()
+    p_in = Path(path)
+    if p_in.is_absolute():
+        logical_norm = os.path.normpath(str(p_in))
+    else:
+        logical_norm = os.path.normpath(str(media_root / path))
+    if not get_faiss_store().media_path_is_allowed(logical_norm, media_root):
+        raise HTTPException(status_code=400, detail="Invalid path")
+    candidate = Path(logical_norm) if p_in.is_absolute() else (media_root / path)
+    resolved = candidate.resolve()
+    if not resolved.is_file():
+        raise HTTPException(status_code=404, detail="Media file not found. Have you moved it?")
+    return FileResponse(resolved)
 
 @app.get("/api/system/browse-directory")
 def browse_directory():
@@ -81,13 +94,6 @@ def browse_directory():
     return {"path": folder_path}
 
 
-def _is_same_or_inside_directory(child_norm: str, root_norm: str) -> bool:
-    """Path-boundary check using normcase (Windows-safe). child_norm/root_norm from normpath."""
-    c = os.path.normcase(child_norm)
-    r = os.path.normcase(root_norm)
-    return c == r or c.startswith(r + os.sep)
-
-
 @app.post("/api/system/reveal-file")
 def reveal_file(body: dict):
     import subprocess
@@ -100,20 +106,19 @@ def reveal_file(body: dict):
     rel = rel.strip()
 
     media_root = settings.media_root.resolve()
-    root_norm = os.path.normpath(str(media_root))
     p_in = Path(rel)
 
-    # Logical path under media_root (do not require resolved target to stay under
-    # media_root — symlinks/junctions may point elsewhere while the indexed path is under data).
+    # Logical path under media_root — do not .resolve() before the boundary check,
+    # or junctions/symlinks make the path "escape" media_root and fail validation.
     if p_in.is_absolute():
         logical_norm = os.path.normpath(str(p_in))
     else:
-        logical_norm = os.path.normpath(str((media_root / rel).resolve()))
+        logical_norm = os.path.normpath(str(media_root / rel))
 
-    if not _is_same_or_inside_directory(logical_norm, root_norm):
+    if not get_faiss_store().media_path_is_allowed(logical_norm, media_root):
         raise HTTPException(status_code=400, detail="Invalid path")
 
-    abs_path = Path(logical_norm).resolve()
+    abs_path = Path(logical_norm).resolve() if p_in.is_absolute() else (media_root / rel).resolve()
     if not abs_path.is_file():
         raise HTTPException(status_code=404, detail="File not found")
 

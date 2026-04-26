@@ -24,4 +24,15 @@ def scan_media(root: Path) -> tuple[list[Path], list[Path]]:
 
 
 def relative_under_media(path: Path, media_root: Path) -> str:
-    return path.resolve().as_posix()
+    """Path under the index, relative to media_root, without following symlinks.
+
+    Using resolve() here breaks reveal/serving when files live behind junctions:
+    the resolved absolute path can sit outside media_root even though the
+    logical path is inside data/.
+    """
+    path_abs = path.absolute()
+    root_abs = media_root.absolute()
+    try:
+        return path_abs.relative_to(root_abs).as_posix()
+    except ValueError:
+        return path.resolve().as_posix()
