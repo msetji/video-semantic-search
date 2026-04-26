@@ -31,6 +31,8 @@ The Video Semantic Search app has been upgraded to support absolute native direc
 
 ## 3. Backend (FastAPI)
 
+**Optional config:** To override defaults from [`backend/app/config.py`](backend/app/config.py), copy [`backend/.env.example`](backend/.env.example) to `backend/.env` and edit. Pydantic loads `.env` from the **current working directory**, so run the server from `backend/` as below (otherwise `.env` may be ignored).
+
 ```bash
 cd backend
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
@@ -51,6 +53,8 @@ Optional environment (see `backend/app/config.py`): `MEDIA_ROOT`, **`MAX_FRAMES_
 ### Index on-disk format (migration)
 
 The index uses **`backend/database/faiss.index`** + **`backend/database/metadata.sqlite`** (row ids aligned with FAISS). If you have an older tree with **`metadata.json`** only, the server will **migrate** to SQLite when row counts match the FAISS file. Otherwise, delete `backend/database/*` (keep `.gitkeep`) and run `POST /index` again.
+
+**Windows shortcut:** From the repo root, [`start-dev.bat`](start-dev.bat) can launch backend and frontend in separate `cmd` windows if you use Miniforge at `%USERPROFILE%\miniforge3` and the env name `video-semantic-search`; adjust `CONDA_BASE` inside the file if your install path differs.
 
 ## 4. Frontend (Vite)
 
