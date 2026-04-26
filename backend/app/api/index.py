@@ -1,4 +1,5 @@
 import logging
+import os
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException
 from fastapi.responses import JSONResponse
@@ -20,27 +21,70 @@ logger = logging.getLogger(__name__)
 router = APIRouter(tags=["index"])
 
 
+def _normalize_scan_roots(body: IndexRequest) -> list[str | None]:
+    raw_paths: list[str] = []
+    if body.root_paths is not None:
+        raw_paths.extend(body.root_paths)
+    elif body.root_path is not None:
+        raw_paths.append(body.root_path)
+
+    cleaned = [p.strip() for p in raw_paths if isinstance(p, str) and p.strip()]
+    if not cleaned:
+        return [None]
+
+    deduped: list[str] = []
+    seen: set[str] = set()
+    for path in cleaned:
+        key = os.path.normcase(os.path.normpath(path))
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(path)
+    return deduped
+
+
 def _rebuild_index_and_mark_state_completed(
-    root_path: str | None,
+    scan_roots: list[str | None],
     replace_entire_index: bool,
 ) -> dict:
-    stats = rebuild_index(
-        root_path,
-        progress_callback=index_state.set_embedding_count,
-        file_progress_callback=index_state.set_file_progress,
-        replace_entire_index=replace_entire_index,
-    )
-    index_state.complete(stats)
-    return stats
+    images_indexed = 0
+    videos_indexed = 0
+    total_embeddings = 0
+    final_root = ""
+
+    for i, root_path in enumerate(scan_roots):
+        stats = rebuild_index(
+            root_path,
+            progress_callback=index_state.set_embedding_count,
+            file_progress_callback=index_state.set_file_progress,
+            replace_entire_index=replace_entire_index if i == 0 else False,
+        )
+        images_indexed += int(stats["images_indexed"])
+        videos_indexed += int(stats["videos_indexed"])
+        total_embeddings = int(stats["embeddings"])
+        final_root = str(stats["root"])
+
+    if len(scan_roots) > 1:
+        roots = [r for r in scan_roots if r]
+        final_root = f"{len(roots)} directories" if roots else final_root
+
+    combined = {
+        "root": final_root,
+        "images_indexed": images_indexed,
+        "videos_indexed": videos_indexed,
+        "embeddings": total_embeddings,
+    }
+    index_state.complete(combined)
+    return combined
 
 
 def run_scheduled_background_index_job(
-    root_path: str | None,
+    scan_roots: list[str | None],
     replace_entire_index: bool,
 ) -> None:
     with INDEXING_LOCK:
         try:
-            _rebuild_index_and_mark_state_completed(root_path, replace_entire_index)
+            _rebuild_index_and_mark_state_completed(scan_roots, replace_entire_index)
         except IndexCancelledError:
             logger.info("Background indexing was cancelled by user.")
             index_state.mark_cancelled()
@@ -51,6 +95,7 @@ def run_scheduled_background_index_job(
 
 @router.post("/index")
 def run_index(body: IndexRequest, background_tasks: BackgroundTasks):
+    scan_roots = _normalize_scan_roots(body)
     if body.run_in_background:
         with INDEXING_LOCK:
             if index_state.is_running():
@@ -61,7 +106,7 @@ def run_index(body: IndexRequest, background_tasks: BackgroundTasks):
             index_state.start()
         background_tasks.add_task(
             run_scheduled_background_index_job,
-            body.root_path,
+            scan_roots,
             body.replace_entire_index,
         )
         return JSONResponse(
@@ -77,7 +122,7 @@ def run_index(body: IndexRequest, background_tasks: BackgroundTasks):
         index_state.start()
         try:
             stats = _rebuild_index_and_mark_state_completed(
-                body.root_path,
+                scan_roots,
                 body.replace_entire_index,
             )
             return IndexResponse(**stats)

@@ -93,6 +93,32 @@ def browse_directory():
     
     return {"path": folder_path}
 
+@app.get("/api/system/browse-directories")
+def browse_directories():
+    import tkinter as tk
+    from tkinter import filedialog, messagebox
+
+    root = tk.Tk()
+    root.withdraw()
+    root.attributes("-topmost", True)
+
+    selected: list[str] = []
+    while True:
+        folder_path = filedialog.askdirectory(parent=root, title="Select Directory to Index")
+        if not folder_path:
+            break
+        if folder_path not in selected:
+            selected.append(folder_path)
+        if not messagebox.askyesno(
+            "Select Another Directory",
+            "Add another directory to this indexing run?",
+            parent=root,
+        ):
+            break
+
+    root.destroy()
+    return {"paths": selected}
+
 
 @app.post("/api/system/reveal-file")
 def reveal_file(body: dict):

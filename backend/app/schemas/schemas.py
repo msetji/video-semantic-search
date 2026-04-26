@@ -8,6 +8,13 @@ class IndexRequest(BaseModel):
         default=None,
         description="Absolute path to index, or Path relative to MEDIA_ROOT (e.g. 'vacation'). Empty = scan all of MEDIA_ROOT.",
     )
+    root_paths: list[str] | None = Field(
+        default=None,
+        description=(
+            "Optional list of absolute paths or MEDIA_ROOT-relative paths to index in one run. "
+            "When provided, this takes precedence over root_path."
+        ),
+    )
     run_in_background: bool = Field(
         default=False,
         description="If true, return 202 immediately and run indexing in a background task (poll GET /index/status).",

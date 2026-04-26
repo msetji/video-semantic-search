@@ -41,7 +41,8 @@ function App() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const [indexRootPath, setIndexRootPath] = useState('')
+  const [indexRootPathInput, setIndexRootPathInput] = useState('')
+  const [indexRootPaths, setIndexRootPaths] = useState<string[]>([])
   const [replaceEntireIndex, setReplaceEntireIndex] = useState(false)
   const [indexStatus, setIndexStatus] = useState<IndexStatus | null>(null)
   const [cancelling, setCancelling] = useState(false)
@@ -128,13 +129,34 @@ function App() {
   }
 
   //opens a folder picker to make process more streamlined for the user
+  function addIndexRootPath(path: string) {
+    const trimmed = path.trim()
+    if (!trimmed) return
+    setIndexRootPaths((prev) => (prev.includes(trimmed) ? prev : [...prev, trimmed]))
+    setIndexRootPathInput('')
+  }
+
+  function removeIndexRootPath(path: string) {
+    setIndexRootPaths((prev) => prev.filter((p) => p !== path))
+  }
+
   async function handleBrowseDirectory() {
     try {
-      const res = await fetch(`${API_BASE}/api/system/browse-directory`)
+      const res = await fetch(`${API_BASE}/api/system/browse-directories`)
       if (res.ok) {
         const data = await res.json()
-        if (data.path) {
-          setIndexRootPath(data.path)
+        if (Array.isArray(data.paths)) {
+          setIndexRootPaths((prev) => {
+            const merged = new Set(prev)
+            for (const raw of data.paths) {
+              if (typeof raw === 'string' && raw.trim()) {
+                merged.add(raw.trim())
+              }
+            }
+            return Array.from(merged)
+          })
+        } else if (typeof data.path === 'string' && data.path.trim()) {
+          addIndexRootPath(data.path)
         }
       }
     } catch (e) {
@@ -148,7 +170,7 @@ function App() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          root_path: indexRootPath || null,
+          root_paths: indexRootPaths.length > 0 ? indexRootPaths : null,
           run_in_background: true,
           replace_entire_index: replaceEntireIndex,
         }),
@@ -267,16 +289,28 @@ function App() {
                   <span className="text-zinc-400 font-medium whitespace-nowrap">Indexer:</span>
                   <input
                     type="text"
-                    value={indexRootPath}
-                    onChange={(e) => setIndexRootPath(e.target.value)}
-                    placeholder="System directory path"
+                    value={indexRootPathInput}
+                    onChange={(e) => setIndexRootPathInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault()
+                        addIndexRootPath(indexRootPathInput)
+                      }
+                    }}
+                    placeholder="Directory path (optional)"
                     className="flex-1 rounded border border-zinc-700 bg-zinc-950 px-2 py-1.5 text-xs text-white placeholder:text-zinc-600 focus:border-violet-500 focus:outline-none"
                   />
+                  <button
+                    onClick={() => addIndexRootPath(indexRootPathInput)}
+                    className="whitespace-nowrap rounded bg-zinc-800 px-3 py-1.5 text-xs font-medium text-zinc-300 hover:bg-zinc-700 hover:text-white"
+                  >
+                    Add
+                  </button>
                   <button
                     onClick={handleBrowseDirectory}
                     className="whitespace-nowrap rounded bg-zinc-800 px-3 py-1.5 text-xs font-medium text-zinc-300 hover:bg-zinc-700 hover:text-white"
                   >
-                    Choose Directory
+                    Choose Directories
                   </button>
                 </div>
                 <div className="flex flex-col items-end gap-2 sm:flex-row sm:items-center">
@@ -307,6 +341,20 @@ function App() {
                   )}
                 </div>
               </div>
+              {indexRootPaths.length > 0 && (
+                <div className="flex flex-wrap gap-2">
+                  {indexRootPaths.map((path) => (
+                    <button
+                      key={path}
+                      onClick={() => removeIndexRootPath(path)}
+                      className="rounded border border-zinc-700 bg-zinc-900 px-2 py-1 text-[11px] text-zinc-300 hover:border-zinc-500 hover:text-white"
+                      title="Click to remove"
+                    >
+                      {path} <span className="text-zinc-500">×</span>
+                    </button>
+                  ))}
+                </div>
+              )}
 
               {/* progress panel */}
               {indexStatus && indexStatus.status !== 'idle' && (
