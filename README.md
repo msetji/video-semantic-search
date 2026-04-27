@@ -71,7 +71,7 @@ A structured error analysis is documented in [`ERROR_ANALYSIS.md`](ERROR_ANALYSI
 4. **Fine-grained distinctions** (e.g. `"golden retriever"` vs `"labrador retriever"`) — noisy web captions conflate visually similar categories.
 5. **OCR / text in images** — the vision encoder reads text as visual texture, not as characters.
 
-See [`ERROR_ANALYSIS.md`](ERROR_ANALYSIS.md) for screenshots, detailed analysis, and proposed mitigations.
+See [`ERROR_ANALYSIS.md`](ERROR_ANALYSIS.md) for screenshot, detailed analysis, and proposed mitigations.
 
 For scope, concurrency, and hardware tradeoffs, see [DESIGN.md](DESIGN.md).
 
