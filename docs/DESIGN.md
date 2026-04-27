@@ -4,7 +4,7 @@ This document states **scope and limitations** deliberately. The project is an *
 
 ## What this system is
 
-- A **single-machine**, **local-only** pipeline: media on disk → full re-index on demand → text query → cosine similarity via FAISS.
+- A **single-machine**, **local-only** pipeline: media on disk → `POST /index` on demand → text query → cosine similarity via FAISS.
 - **Local storage** is a **course constraint** (privacy, no cloud upload), with tradeoffs: no multi-user auth, no shared index across machines, no managed hosting story.
 
 ## Search: FAISS `IndexFlatIP`
@@ -20,9 +20,10 @@ This document states **scope and limitations** deliberately. The project is an *
 
 ## Indexing model
 
-- **`POST /index` performs a full rebuild** of the scanned subtree: every image is re-embedded; every video is sampled at **~1 FPS** up to **`MAX_FRAMES_PER_VIDEO`** (default **7200** ≈ 2 hours at 1 FPS), then embeddings are written.
-- **Incremental updates** (add one file without re-embedding everything) are **out of scope** for the current deadline; they are natural future work.
-- **1 FPS sampling** bounds VRAM and index size by avoiding dense frame decoding; **4K** decoding is still CPU/GPU expensive—benchmark on your clips.
+- **Per request, `POST /index` fully re-encodes the requested scan root(s)**: under each root, every image is re-embedded, and every video is sampled at **~1 FPS** up to **`MAX_FRAMES_PER_VIDEO`** (default **7200** ≈ 2 hours at 1 FPS), then the new vectors for that scan replace the previous embeddings for those paths in the FAISS store.
+- **Cumulative / merged index (default `replace_entire_index: false`):** embeddings for paths *outside* the current scan (other folders indexed earlier) are **kept**. Send **`replace_entire_index: true`** to drop the whole index and replace it with only this run. This is **not** a “patch one new file in O(1)” update—re-scanning a subtree re-encodes that subtree.
+- **True single-file / hot incremental add** (new file arrives, embed only that file with no rescan) is **out of scope** for the current deadline; it is natural future work.
+- **1 FPS sampling** bounds VRAM and index size; **4K** decoding is still expensive—benchmark on your clips.
 
 ## Persistence: SQLite + FAISS
 

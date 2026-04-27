@@ -1,6 +1,6 @@
 # Utility scripts
 
-Run these from the **repository root** with the `video-semantic-search` conda environment active unless noted otherwise. Full benchmark and setup details are in [SETUP.md](../SETUP.md).
+Run these from the **repository root** with the `video-semantic-search` conda environment active unless noted otherwise. Full benchmark and setup details are in [SETUP.md](../SETUP.md). The app’s `POST /index` API (and the UI) also support `root_paths` to scan multiple folders in one run—see the Backend section there.
 
 | Script | Purpose |
 |--------|---------|
